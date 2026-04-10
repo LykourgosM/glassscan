@@ -102,8 +102,8 @@ def find_nearby_panoramas(
     api_key: str,
     *,
     radius: int = DEFAULT_RADIUS,
-    step_m: int = 5,
-    n_steps: int = 2,
+    step_m: int = 15,
+    n_steps: int = 3,
 ) -> list[tuple[float, float, str]]:
     """Find multiple unique panoramas along the road nearest to a building.
 
