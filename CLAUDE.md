@@ -35,8 +35,8 @@ make pipeline      # run end-to-end pipeline
 - **rectify** — DONE (25 tests). Perspective correction via quadrilateral fit + homography warp.
 - **wwr** — DONE (29 tests). Pixel counting + connected components for window detection.
 - **predict** — DONE (29 tests). Feature-agnostic XGBoost regression with quantile prediction intervals.
+- **pipeline.py** — DONE (21 tests). Orchestrator chaining all modules with lazy imports.
 - **visualise** — stub
-- **pipeline.py** — stub
 
 ## Conventions
 - Python 3.11, PyTorch + HuggingFace Transformers
@@ -52,6 +52,22 @@ make pipeline      # run end-to-end pipeline
 - User has blocked Google as merchant on their card (hard stop)
 - Street View Static API: ~$7/1000 image requests, metadata endpoint is free
 - ~28,000 free image calls/month ($200 Maps credit)
+
+## Pipeline architecture
+`pipeline.py` orchestrates: fetch -> segment -> rectify -> wwr -> predict.
+Three entry points:
+- `run_cv_pipeline(buildings, api_key)` -- image-based WWR measurement
+- `run_prediction_pipeline(wwr_results, metadata_df)` -- metadata-based prediction
+- `run_full_pipeline(...)` -- both in sequence
+
+Uses lazy imports because PyTorch (segment) and XGBoost (predict) ship
+conflicting libomp on macOS. Tests are split: `test_pipeline.py` (prediction,
+14 tests) and `test_pipeline_cv.py` (CV mocks, 7 tests).
+
+At the hackathon, the pipeline functions stay stable. What changes is the
+caller code: data loading, EGID matching, feature column selection. If a
+module API changes (e.g., new param on segment_batch), update the call in
+run_cv_pipeline.
 
 ## Known limitations / future improvements
 - Street View images capture multiple buildings per frame. Accept for now; future fix
