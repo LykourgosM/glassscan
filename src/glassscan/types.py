@@ -22,6 +22,8 @@ class BuildingImage:
     heading: float  # compass bearing used for the request
     pitch: float
     fov: float
+    pano_id: str = ""  # Street View panorama ID (for deduplication)
+    view_index: int = 0  # 0 = primary view, 1+ = additional angles
 
 
 @dataclass
