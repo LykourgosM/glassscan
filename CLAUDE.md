@@ -83,10 +83,11 @@ run_cv_pipeline.
 - Multi-view aggregation: `aggregate_wwr()` merges multiple views per building.
   Default weights: primary view=1.0, secondary views=0.5. Accepts a flat list of
   custom weights to override defaults.
-- LLM-weighted aggregation (future): send raw image + overlay to GPT-4o-mini to
-  score segmentation quality per view (0-1), pass scores as weights to
-  `aggregate_wwr()`. Cost: ~$1-2 for full dataset. Needs OpenAI API key.
-  Do this last to avoid unnecessary spend during development.
+- Claude-weighted aggregation: use Claude Code's vision (included in Max sub)
+  to score segmentation quality per view (0-1). Save to `weights.json` keyed
+  by EGID (e.g. `{"140040": [0.9, 0.3, 0.7]}`). `aggregate_wwr` loads from
+  this file if it exists, falls back to hardcoded weights (primary=1.0,
+  secondary=0.5). Run scoring in a separate Claude Code session after pipeline.
 - Camera position visualisation: when a building is selected, show panorama
   positions on the map with view cone lines projecting toward the building.
   Data already available in BuildingImage (pano lat/lon, heading, fov).
