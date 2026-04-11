@@ -34,6 +34,7 @@ class SegmentationResult:
     mask: np.ndarray  # H x W, uint8 — 0=background, 1=wall, 2=window
     confidence: float  # mean model confidence across facade pixels
     original_image: np.ndarray  # the input image, kept for visualisation
+    view_index: int = 0  # 0 = primary view, 1+ = additional angles
 
 
 @dataclass
@@ -44,6 +45,7 @@ class RectifiedResult:
     rectified_image: np.ndarray  # H x W x 3
     rectified_mask: np.ndarray  # H x W, same classes as SegmentationResult.mask
     homography: np.ndarray  # 3x3 transformation matrix
+    view_index: int = 0  # 0 = primary view, 1+ = additional angles
 
 
 @dataclass
@@ -56,6 +58,7 @@ class WWRResult:
     wall_area_px: int
     n_windows: int  # count of distinct window regions
     confidence: float
+    view_index: int = 0  # 0 = primary view, 1+ = additional angles
 
 
 @dataclass

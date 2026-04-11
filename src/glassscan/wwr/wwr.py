@@ -98,6 +98,7 @@ def compute_wwr(rectified: RectifiedResult) -> WWRResult:
         wall_area_px=wall_px,
         n_windows=n_windows,
         confidence=conf,
+        view_index=getattr(rectified, "view_index", 0),
     )
 
 
@@ -134,17 +135,15 @@ def aggregate_wwr(
 
     # Group by EGID, preserving insertion order
     groups: OrderedDict[str, list[tuple[WWRResult, float]]] = OrderedDict()
-    seen: set[str] = set()
 
     for i, r in enumerate(results):
         if weights is not None:
             w = weights[i]
-        elif r.egid not in seen:
+        elif r.view_index == 0:
             w = 1.0  # primary view
         else:
             w = 0.5  # secondary view
 
-        seen.add(r.egid)
         groups.setdefault(r.egid, []).append((r, w))
 
     aggregated: list[WWRResult] = []

@@ -135,18 +135,20 @@ def export_results(
 
     # Generate per-view images if multi-view data available
     if per_view_wwr is not None:
+        raw_dir = output_dir / "raw"
         overlays_dir = output_dir / "overlays"
         rect_overlays_dir = output_dir / "rectified_overlays"
         rectified_dir = output_dir / "rectified"
-        overlays_dir.mkdir(parents=True, exist_ok=True)
-        rect_overlays_dir.mkdir(parents=True, exist_ok=True)
-        rectified_dir.mkdir(parents=True, exist_ok=True)
+        for d in (raw_dir, overlays_dir, rect_overlays_dir, rectified_dir):
+            d.mkdir(parents=True, exist_ok=True)
 
         for egid, imgs in images_by_egid.items():
             segs = segs_by_egid.get(egid, [])
             rects = rects_by_egid.get(egid, [])
             for i, img in enumerate(imgs):
                 suffix = f"_v{i}" if i > 0 else ""
+                # Raw image
+                cv2.imwrite(str(raw_dir / f"{egid}{suffix}.jpg"), img.image)
                 # Overlay (raw + segmentation)
                 if i < len(segs):
                     ov = _create_overlay(img.image, segs[i].mask)

@@ -131,6 +131,8 @@ def rectify_image(
     binary = _facade_mask(mask)
     contour = _largest_contour(binary)
 
+    vi = getattr(seg_result, "view_index", 0)
+
     # If no facade or too small, return as-is
     if contour is None or cv2.contourArea(contour) < _MIN_FACADE_PX:
         logger.warning("EGID %s: facade too small for rectification, passing through", seg_result.egid)
@@ -139,6 +141,7 @@ def rectify_image(
             rectified_image=image.copy(),
             rectified_mask=mask.copy(),
             homography=np.eye(3, dtype=np.float64),
+            view_index=vi,
         )
 
     # Fit quadrilateral and order corners
@@ -163,12 +166,14 @@ def rectify_image(
         rectified_image=rectified_image,
         rectified_mask=rectified_mask,
         homography=H,
+        view_index=vi,
     )
 
     if save_dir is not None:
         save_dir.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(save_dir / f"{seg_result.egid}_rectified.jpg"), rectified_image)
-        cv2.imwrite(str(save_dir / f"{seg_result.egid}_rectified_mask.png"), rectified_mask)
+        suffix = f"_v{vi}" if vi > 0 else ""
+        cv2.imwrite(str(save_dir / f"{seg_result.egid}{suffix}_rectified.jpg"), rectified_image)
+        cv2.imwrite(str(save_dir / f"{seg_result.egid}{suffix}_rectified_mask.png"), rectified_mask)
 
     return result
 

@@ -204,16 +204,19 @@ def segment_image(
 
     confidence = _compute_confidence(cmp_probs, building_mask)
 
+    vi = building_image.view_index
     result = SegmentationResult(
         egid=building_image.egid,
         mask=pipeline_mask,
         confidence=confidence,
         original_image=img,
+        view_index=vi,
     )
 
     if save_dir is not None:
         save_dir.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(save_dir / f"{building_image.egid}_mask.png"), pipeline_mask)
+        suffix = f"_v{vi}" if vi > 0 else ""
+        cv2.imwrite(str(save_dir / f"{building_image.egid}{suffix}_mask.png"), pipeline_mask)
 
     return result
 
@@ -272,16 +275,19 @@ def segment_batch(
 
             confidence = _compute_confidence(cmp_probs[j], building_mask)
 
+            vi = building_image.view_index
             result = SegmentationResult(
                 egid=building_image.egid,
                 mask=pipeline_mask,
                 confidence=confidence,
                 original_image=building_image.image,
+                view_index=vi,
             )
 
             if save_dir is not None:
                 save_dir.mkdir(parents=True, exist_ok=True)
-                cv2.imwrite(str(save_dir / f"{building_image.egid}_mask.png"), pipeline_mask)
+                suffix = f"_v{vi}" if vi > 0 else ""
+                cv2.imwrite(str(save_dir / f"{building_image.egid}{suffix}_mask.png"), pipeline_mask)
 
             results.append(result)
 
