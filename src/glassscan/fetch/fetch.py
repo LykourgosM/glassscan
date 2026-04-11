@@ -176,6 +176,22 @@ def _fetch_from_panorama(
     """Fetch a single image from a known panorama, aimed at the building."""
     heading = _bearing(pano_lat, pano_lon, building_lat, building_lon)
 
+    # Disk cache: load from file if already fetched
+    if save_dir is not None:
+        suffix = f"_v{view_index}" if view_index > 0 else ""
+        cached_path = save_dir / f"{egid}{suffix}.jpg"
+        if cached_path.exists():
+            image = cv2.imdecode(
+                np.fromfile(str(cached_path), dtype=np.uint8), cv2.IMREAD_COLOR,
+            )
+            if image is not None:
+                logger.debug("EGID %s view %d: loaded from cache", egid, view_index)
+                return BuildingImage(
+                    egid=egid, image=image, lat=building_lat, lon=building_lon,
+                    heading=heading, pitch=pitch, fov=fov,
+                    pano_id=pano_id, view_index=view_index,
+                )
+
     resp = requests.get(
         _STREETVIEW_URL,
         params={
@@ -331,8 +347,9 @@ def fetch_batch(
 
         egid, lat, lon = b["egid"], b["lat"], b["lon"]
 
-        # Skip if primary image already on disk
-        if save_dir and (save_dir / f"{egid}.jpg").exists():
+        # Skip if primary image already on disk (single-view only;
+        # multi-view relies on _fetch_from_panorama's disk cache)
+        if max_views <= 1 and save_dir and (save_dir / f"{egid}.jpg").exists():
             logger.debug("EGID %s already on disk, skipping", egid)
             continue
 

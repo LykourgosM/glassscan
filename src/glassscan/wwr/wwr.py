@@ -108,3 +108,73 @@ def compute_wwr_batch(
     results = [compute_wwr(r) for r in rectified_results]
     logger.info("Computed WWR for %d images", len(results))
     return results
+
+
+def aggregate_wwr(
+    results: list[WWRResult],
+    weights: list[float] | None = None,
+) -> list[WWRResult]:
+    """Merge multiple views per building into one WWRResult per EGID.
+
+    Parameters
+    ----------
+    results
+        WWR results, potentially multiple per EGID (from multi-view).
+    weights
+        Flat list parallel to *results*. If None, uses default scheme:
+        first occurrence per EGID gets weight 1.0, subsequent views 0.5.
+        Pass custom weights (e.g. from LLM quality scores) to override.
+
+    Returns
+    -------
+    list[WWRResult]
+        One result per unique EGID, with weighted-average WWR.
+    """
+    from collections import OrderedDict
+
+    # Group by EGID, preserving insertion order
+    groups: OrderedDict[str, list[tuple[WWRResult, float]]] = OrderedDict()
+    seen: set[str] = set()
+
+    for i, r in enumerate(results):
+        if weights is not None:
+            w = weights[i]
+        elif r.egid not in seen:
+            w = 1.0  # primary view
+        else:
+            w = 0.5  # secondary view
+
+        seen.add(r.egid)
+        groups.setdefault(r.egid, []).append((r, w))
+
+    aggregated: list[WWRResult] = []
+    for egid, views in groups.items():
+        if len(views) == 1:
+            aggregated.append(views[0][0])
+            continue
+
+        total_w = sum(w for _, w in views)
+        wwr = sum(r.wwr * w for r, w in views) / total_w
+        window_px = sum(r.window_area_px for r, _ in views)
+        wall_px = sum(r.wall_area_px for r, _ in views)
+        n_windows = max(r.n_windows for r, _ in views)
+        conf = max(r.confidence for r, _ in views)
+
+        aggregated.append(WWRResult(
+            egid=egid,
+            wwr=wwr,
+            window_area_px=window_px,
+            wall_area_px=wall_px,
+            n_windows=n_windows,
+            confidence=conf,
+        ))
+
+        logger.info(
+            "EGID %s: aggregated %d views -> WWR=%.3f (weights=%s)",
+            egid, len(views), wwr, [f"{w:.1f}" for _, w in views],
+        )
+
+    logger.info(
+        "Aggregated %d results -> %d buildings", len(results), len(aggregated),
+    )
+    return aggregated

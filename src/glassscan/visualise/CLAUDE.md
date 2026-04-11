@@ -46,6 +46,22 @@ export_results(result, "dashboard/public", metadata_df=metadata)
 # Then: cd dashboard && npm run dev
 ```
 
+## Multi-view support
+When the pipeline runs with `max_views > 1`, buildings have multiple images.
+The export should include per-view data in `buildings.json` so the dashboard
+can display all views in the building panel with their weights. Structure:
+```json
+{
+  "egid": "140040",
+  "wwr": 0.15,
+  "views": [
+    {"view_index": 0, "wwr": 0.14, "weight": 1.0},
+    {"view_index": 1, "wwr": 0.17, "weight": 0.5}
+  ]
+}
+```
+Images saved as `raw/{egid}.jpg` (primary), `raw/{egid}_v1.jpg`, `raw/{egid}_v2.jpg`.
+
 ## Hackathon notes
 - Pre-compute a batch of buildings before the hackathon, export to JSON
 - The dashboard reads static files -- no server needed during the demo

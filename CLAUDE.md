@@ -80,8 +80,10 @@ run_cv_pipeline.
   contour (approximate). With 3D building geometry + known camera position from Street View
   metadata, we can project exact facade corners into the image and compute a geometrically
   exact homography. Current module serves as fallback when 3D data is unavailable.
-- VLM-weighted multi-view aggregation: fetch 2-3 views per building, run segmentation on
-  each, then send raw image + overlay to GPT-4o-mini to score segmentation quality (0-1).
-  Use scores as weights when averaging WWR across views. Cost: ~$1-2 for full dataset.
-  Gives both quality filtering and multi-view aggregation. Needs OpenAI API key.
+- Multi-view aggregation: `aggregate_wwr()` merges multiple views per building.
+  Default weights: primary view=1.0, secondary views=0.5. Accepts a flat list of
+  custom weights to override defaults.
+- LLM-weighted aggregation (future): send raw image + overlay to GPT-4o-mini to
+  score segmentation quality per view (0-1), pass scores as weights to
+  `aggregate_wwr()`. Cost: ~$1-2 for full dataset. Needs OpenAI API key.
   Do this last to avoid unnecessary spend during development.

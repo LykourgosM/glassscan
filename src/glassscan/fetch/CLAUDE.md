@@ -25,7 +25,9 @@ Fetch facade images of Swiss buildings from the Google Street View Static API.
 - Image size: 640x640, fov=70, pitch=20
 - Metadata calls are free; only image fetches are billed
 - `max_calls` cap in fetch_batch counts only billed calls
-- Skip-if-exists: won't re-fetch images already saved to disk
+- Disk cache: `_fetch_from_panorama` checks save_dir before making API calls,
+  loads from disk if already fetched. Single-view skips at building level;
+  multi-view skips per-image via the cache.
 - Rate limiting via configurable `delay` (default 0.1s)
 - Files saved as `{egid}.jpg` (view 0) and `{egid}_v{i}.jpg` (additional views)
 
