@@ -8,6 +8,7 @@ returns a WWR value between 0.0 and 1.0.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -111,9 +112,40 @@ def compute_wwr_batch(
     return results
 
 
+def load_weights(path: Path | str) -> dict[str, list[float]]:
+    """Load per-EGID view weights from a JSON file.
+
+    Expected format: ``{"egid": [w0, w1, w2], ...}``
+    """
+    import json
+
+    path = Path(path)
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+
+def unscored_egids(
+    results: list[WWRResult],
+    weights_file: Path | str,
+) -> list[str]:
+    """Return EGIDs that have WWR results but no entry in the weights file.
+
+    Use this to find which buildings still need LLM scoring.
+    """
+    existing = load_weights(weights_file)
+    seen: list[str] = []
+    for r in results:
+        if r.egid not in seen:
+            seen.append(r.egid)
+    return [egid for egid in seen if egid not in existing]
+
+
 def aggregate_wwr(
     results: list[WWRResult],
     weights: list[float] | None = None,
+    weights_file: Path | str | None = None,
 ) -> list[WWRResult]:
     """Merge multiple views per building into one WWRResult per EGID.
 
@@ -125,6 +157,10 @@ def aggregate_wwr(
         Flat list parallel to *results*. If None, uses default scheme:
         first occurrence per EGID gets weight 1.0, subsequent views 0.5.
         Pass custom weights (e.g. from LLM quality scores) to override.
+    weights_file
+        Path to a JSON file with per-EGID weights (e.g. from LLM scoring).
+        Format: ``{"egid": [w0, w1, w2], ...}``. Takes precedence over
+        the default scheme but is overridden by *weights*.
 
     Returns
     -------
@@ -133,12 +169,27 @@ def aggregate_wwr(
     """
     from collections import OrderedDict
 
+    # Load file-based weights if provided
+    file_weights: dict[str, list[float]] = {}
+    if weights_file is not None:
+        file_weights = load_weights(weights_file)
+        if file_weights:
+            logger.info("Loaded weights for %d buildings from %s", len(file_weights), weights_file)
+
+    # Track how many views we've seen per EGID (for file_weights indexing)
+    egid_view_count: dict[str, int] = {}
+
     # Group by EGID, preserving insertion order
     groups: OrderedDict[str, list[tuple[WWRResult, float]]] = OrderedDict()
 
     for i, r in enumerate(results):
         if weights is not None:
             w = weights[i]
+        elif r.egid in file_weights:
+            idx = egid_view_count.get(r.egid, 0)
+            fw = file_weights[r.egid]
+            w = fw[idx] if idx < len(fw) else 0.5
+            egid_view_count[r.egid] = idx + 1
         elif r.view_index == 0:
             w = 1.0  # primary view
         else:
