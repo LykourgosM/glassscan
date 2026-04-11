@@ -164,7 +164,7 @@ export default function BuildingPanel({ building: b, onClose }: Props) {
             {/* Left: pipeline stages */}
             <div className="flex-1 overflow-y-auto custom-scroll p-5 min-w-0">
               {b.source === "measured" ? (
-                <div className="grid grid-cols-3 gap-4 h-full">
+                <div className="grid grid-cols-4 gap-3 h-full">
                   <PipelineStage
                     step={1}
                     label="Fetch"
@@ -182,6 +182,12 @@ export default function BuildingPanel({ building: b, onClose }: Props) {
                     label="Rectify"
                     sublabel="Perspective correction"
                     src={`./rectified/${b.egid}_rectified.jpg`}
+                  />
+                  <PipelineStage
+                    step={4}
+                    label="Measure"
+                    sublabel="WWR pixel count"
+                    src={`./rectified_overlays/${b.egid}.jpg`}
                   />
                 </div>
               ) : (

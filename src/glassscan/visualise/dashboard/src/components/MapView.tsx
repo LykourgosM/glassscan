@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import L from "leaflet";
 import type { Building } from "../types";
 import Legend from "./Legend";
+import DrawTool from "./DrawTool";
 
 function wwrColor(wwr: number): string {
   if (wwr < 0.08) return "#06b6d4";
@@ -30,14 +31,26 @@ interface Props {
   buildings: Building[];
   onSelect: (b: Building) => void;
   selected: Building | null;
+  drawing: boolean;
+  drawVertices: [number, number][];
+  onAddVertex: (v: [number, number]) => void;
+  onClosePolygon: () => void;
 }
 
-export default function MapView({ buildings, onSelect, selected }: Props) {
+export default function MapView({
+  buildings,
+  onSelect,
+  selected,
+  drawing,
+  drawVertices,
+  onAddVertex,
+  onClosePolygon,
+}: Props) {
   return (
     <MapContainer
       center={[47.37, 8.54]}
       zoom={14}
-      className="h-full w-full"
+      className={`h-full w-full ${drawing ? "cursor-crosshair" : ""}`}
       zoomControl={true}
     >
       <TileLayer
@@ -64,10 +77,21 @@ export default function MapView({ buildings, onSelect, selected }: Props) {
               weight: isSelected ? 2.5 : isMeasured ? 1.5 : 2,
               opacity: isSelected ? 1 : 0.85,
             }}
-            eventHandlers={{ click: () => onSelect(b) }}
+            eventHandlers={{
+              click: () => {
+                if (!drawing) onSelect(b);
+              },
+            }}
           />
         );
       })}
+
+      <DrawTool
+        active={drawing}
+        vertices={drawVertices}
+        onAddVertex={onAddVertex}
+        onClose={onClosePolygon}
+      />
 
       <Legend />
     </MapContainer>

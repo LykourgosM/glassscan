@@ -1,14 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DashboardData, Building } from "./types";
 import MapView from "./components/MapView";
 import Header from "./components/Header";
 import BuildingPanel from "./components/BuildingPanel";
 import DistributionChart from "./components/DistributionChart";
+import Filters, {
+  DEFAULT_FILTERS,
+  type FilterState,
+} from "./components/Filters";
+import { filterByPolygon } from "./components/DrawTool";
+import SelectionStats from "./components/SelectionStats";
+
+function applyFilters(buildings: Building[], f: FilterState): Building[] {
+  return buildings.filter((b) => {
+    if (f.source !== "all" && b.source !== f.source) return false;
+    if (b.wwr < f.wwrMin || b.wwr > f.wwrMax) return false;
+    return true;
+  });
+}
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Building | null>(null);
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+
+  // Draw tool state
+  const [drawing, setDrawing] = useState(false);
+  const [drawVertices, setDrawVertices] = useState<[number, number][]>([]);
+  const [polygonClosed, setPolygonClosed] = useState(false);
 
   useEffect(() => {
     fetch("./buildings.json")
@@ -19,6 +39,39 @@ export default function App() {
       .then(setData)
       .catch((e) => setError(e.message));
   }, []);
+
+  const filtered = useMemo(
+    () => (data ? applyFilters(data.buildings, filters) : []),
+    [data, filters],
+  );
+
+  const selectedByPolygon = useMemo(
+    () => (polygonClosed ? filterByPolygon(filtered, drawVertices) : null),
+    [filtered, drawVertices, polygonClosed],
+  );
+
+  const chartBuildings = selectedByPolygon ?? filtered;
+
+  function handleToggleDraw() {
+    if (drawing) {
+      // Cancel drawing
+      setDrawing(false);
+      setDrawVertices([]);
+      setPolygonClosed(false);
+    } else {
+      // Start drawing (clear previous)
+      setDrawing(true);
+      setDrawVertices([]);
+      setPolygonClosed(false);
+      setSelected(null);
+    }
+  }
+
+  function handleClearSelection() {
+    setDrawVertices([]);
+    setPolygonClosed(false);
+    setDrawing(false);
+  }
 
   if (error) {
     return (
@@ -52,14 +105,37 @@ export default function App() {
   return (
     <div className="h-full relative font-sans text-white">
       <MapView
-        buildings={data.buildings}
+        buildings={filtered}
         onSelect={setSelected}
         selected={selected}
+        drawing={drawing}
+        drawVertices={drawVertices}
+        onAddVertex={(v) => setDrawVertices((prev) => [...prev, v])}
+        onClosePolygon={() => {
+          setDrawing(false);
+          setPolygonClosed(true);
+        }}
       />
 
       <Header stats={data.stats} />
 
-      <DistributionChart buildings={data.buildings} />
+      <Filters
+        filters={filters}
+        onChange={setFilters}
+        total={data.buildings.length}
+        filtered={filtered.length}
+        drawing={drawing}
+        onToggleDraw={handleToggleDraw}
+      />
+
+      <DistributionChart buildings={chartBuildings} />
+
+      {polygonClosed && selectedByPolygon && (
+        <SelectionStats
+          buildings={selectedByPolygon}
+          onClear={handleClearSelection}
+        />
+      )}
 
       {selected && (
         <BuildingPanel
