@@ -66,10 +66,19 @@ def create_building_card(
     return card
 
 
+def _create_overlay(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Blend raw image with colored segmentation mask (50% opacity)."""
+    overlay = image.copy()
+    overlay[mask == 1] = _WALL_COLOR
+    overlay[mask == 2] = _WINDOW_COLOR
+    return cv2.addWeighted(image, 0.5, overlay, 0.5, 0)
+
+
 def export_results(
     result: object,
     output_dir: Path | str,
     metadata_df: pd.DataFrame | None = None,
+    per_view_wwr: list | None = None,
 ) -> None:
     """Export pipeline results for the dashboard.
 
@@ -80,6 +89,9 @@ def export_results(
             plus feature columns. Used to attach metadata to buildings
             and to get coordinates for predicted buildings (needs
             'lat' and 'lon' columns).
+        per_view_wwr: Pre-aggregation WWR results (one per image, not
+            per building). When provided, per-view data and overlay
+            images are exported for multi-view display in the dashboard.
     """
     from glassscan.pipeline import PipelineResult
 
@@ -90,13 +102,27 @@ def export_results(
     images_dir = output_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build lookup dicts from pipeline stages
-    images_by_egid: dict[str, BuildingImage] = {
-        img.egid: img for img in result.images
-    }
-    segs_by_egid: dict[str, SegmentationResult] = {
-        seg.egid: seg for seg in result.segmentations
-    }
+    # Build lookup dicts from pipeline stages (lists, not single items)
+    from collections import defaultdict
+
+    images_by_egid: defaultdict[str, list[BuildingImage]] = defaultdict(list)
+    for img in result.images:
+        images_by_egid[img.egid].append(img)
+
+    segs_by_egid: defaultdict[str, list[SegmentationResult]] = defaultdict(list)
+    for seg in result.segmentations:
+        segs_by_egid[seg.egid].append(seg)
+
+    rects_by_egid: defaultdict[str, list] = defaultdict(list)
+    for rect in result.rectified:
+        rects_by_egid[rect.egid].append(rect)
+
+    # Per-view WWR lookup
+    pv_wwr_by_egid: defaultdict[str, list] = defaultdict(list)
+    if per_view_wwr is not None:
+        for w in per_view_wwr:
+            pv_wwr_by_egid[w.egid].append(w)
+
     metadata_by_egid: dict[str, dict] = {}
     if metadata_df is not None and "egid" in metadata_df.columns:
         for _, row in metadata_df.iterrows():
@@ -107,15 +133,48 @@ def export_results(
                 if k not in ("egid", "lat", "lon")
             }
 
+    # Generate per-view images if multi-view data available
+    if per_view_wwr is not None:
+        overlays_dir = output_dir / "overlays"
+        rect_overlays_dir = output_dir / "rectified_overlays"
+        rectified_dir = output_dir / "rectified"
+        overlays_dir.mkdir(parents=True, exist_ok=True)
+        rect_overlays_dir.mkdir(parents=True, exist_ok=True)
+        rectified_dir.mkdir(parents=True, exist_ok=True)
+
+        for egid, imgs in images_by_egid.items():
+            segs = segs_by_egid.get(egid, [])
+            rects = rects_by_egid.get(egid, [])
+            for i, img in enumerate(imgs):
+                suffix = f"_v{i}" if i > 0 else ""
+                # Overlay (raw + segmentation)
+                if i < len(segs):
+                    ov = _create_overlay(img.image, segs[i].mask)
+                    cv2.imwrite(str(overlays_dir / f"{egid}{suffix}.jpg"), ov)
+                # Rectified image + overlay
+                if i < len(rects):
+                    cv2.imwrite(
+                        str(rectified_dir / f"{egid}{suffix}_rectified.jpg"),
+                        rects[i].rectified_image,
+                    )
+                    rov = _create_overlay(
+                        rects[i].rectified_image, rects[i].rectified_mask,
+                    )
+                    cv2.imwrite(
+                        str(rect_overlays_dir / f"{egid}{suffix}.jpg"), rov,
+                    )
+
     buildings: list[dict] = []
 
     # Measured buildings (from CV pipeline)
     for wwr_result in result.wwr_results:
         egid = wwr_result.egid
-        img = images_by_egid.get(egid)
-        seg = segs_by_egid.get(egid)
+        imgs = images_by_egid.get(egid, [])
+        segs = segs_by_egid.get(egid, [])
+        img = imgs[0] if imgs else None
+        seg = segs[0] if segs else None
 
-        buildings.append({
+        entry: dict = {
             "egid": egid,
             "lat": img.lat if img else 0.0,
             "lon": img.lon if img else 0.0,
@@ -125,9 +184,29 @@ def export_results(
             "n_windows": wwr_result.n_windows,
             "prediction_interval": None,
             "metadata": metadata_by_egid.get(egid, {}),
-        })
+        }
 
-        # Generate building card image
+        # Per-view data
+        pv = pv_wwr_by_egid.get(egid, [])
+        if len(pv) > 1:
+            seen: set[str] = set()
+            views = []
+            for pw in pv:
+                w = 1.0 if pw.egid not in seen else 0.5
+                seen.add(pw.egid)
+                views.append({
+                    "wwr": round(pw.wwr, 4),
+                    "weight": w,
+                    "n_windows": pw.n_windows,
+                    "confidence": round(pw.confidence, 3),
+                })
+            entry["views"] = views
+        else:
+            entry["views"] = None
+
+        buildings.append(entry)
+
+        # Generate building card image (primary view)
         if img is not None and seg is not None:
             card = create_building_card(img.image, seg.mask, wwr_result.wwr)
             cv2.imwrite(str(images_dir / f"{egid}.jpg"), card)

@@ -1,3 +1,10 @@
+export interface ViewData {
+  wwr: number;
+  weight: number;
+  n_windows: number;
+  confidence: number;
+}
+
 export interface Building {
   egid: string;
   lat: number;
@@ -8,6 +15,7 @@ export interface Building {
   n_windows: number | null;
   prediction_interval: [number, number] | null;
   metadata: Record<string, string | number>;
+  views: ViewData[] | null;
 }
 
 export interface Stats {

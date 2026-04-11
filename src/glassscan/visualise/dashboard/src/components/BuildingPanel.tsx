@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Building } from "../types";
+import type { Building, ViewData } from "../types";
 import WWRGauge from "./WWRGauge";
 
 interface Props {
@@ -164,31 +164,44 @@ export default function BuildingPanel({ building: b, onClose }: Props) {
             {/* Left: pipeline stages */}
             <div className="flex-1 overflow-y-auto custom-scroll p-5 min-w-0">
               {b.source === "measured" ? (
-                <div className="grid grid-cols-4 gap-3 h-full">
-                  <PipelineStage
+                <div className="grid grid-cols-5 gap-3 h-full">
+                  <PipelineColumn
                     step={1}
                     label="Fetch"
                     sublabel="Street View"
-                    src={`./raw/${b.egid}.jpg`}
+                    egid={b.egid}
+                    views={b.views}
+                    srcFn={(egid, suffix) => `./raw/${egid}${suffix}.jpg`}
                   />
-                  <PipelineStage
+                  <PipelineColumn
                     step={2}
                     label="Segment"
                     sublabel="Wall / Window / BG"
-                    src={`./overlays/${b.egid}.jpg`}
+                    egid={b.egid}
+                    views={b.views}
+                    srcFn={(egid, suffix) => `./overlays/${egid}${suffix}.jpg`}
                   />
-                  <PipelineStage
+                  <PipelineColumn
                     step={3}
                     label="Rectify"
                     sublabel="Perspective correction"
-                    src={`./rectified/${b.egid}_rectified.jpg`}
+                    egid={b.egid}
+                    views={b.views}
+                    srcFn={(egid, suffix) =>
+                      `./rectified/${egid}${suffix}_rectified.jpg`
+                    }
                   />
-                  <PipelineStage
+                  <PipelineColumn
                     step={4}
                     label="Measure"
                     sublabel="WWR pixel count"
-                    src={`./rectified_overlays/${b.egid}.jpg`}
+                    egid={b.egid}
+                    views={b.views}
+                    srcFn={(egid, suffix) =>
+                      `./rectified_overlays/${egid}${suffix}.jpg`
+                    }
                   />
+                  <WeightColumn views={b.views} aggregatedWwr={b.wwr} />
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center text-slate-500 text-sm">
@@ -244,17 +257,23 @@ function MiniCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PipelineStage({
+function PipelineColumn({
   step,
   label,
   sublabel,
-  src,
+  egid,
+  views,
+  srcFn,
 }: {
   step: number;
   label: string;
   sublabel: string;
-  src: string;
+  egid: string;
+  views: ViewData[] | null;
+  srcFn: (egid: string, suffix: string) => string;
 }) {
+  const viewCount = views ? views.length : 1;
+
   return (
     <div className="flex flex-col h-full min-h-0">
       <div className="flex items-center gap-2 mb-2.5 shrink-0">
@@ -270,17 +289,84 @@ function PipelineStage({
           </div>
         </div>
       </div>
-      <div className="flex-1 rounded-xl overflow-hidden border border-white/[0.04] bg-black/20 min-h-0">
-        <img
-          src={src}
-          alt={label}
-          className="w-full h-full object-contain"
-          onError={(e) => {
-            const el = e.target as HTMLImageElement;
-            el.parentElement!.innerHTML =
-              '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Not available</div>';
-          }}
-        />
+      <div className="flex-1 flex flex-col gap-1.5 min-h-0">
+        {Array.from({ length: viewCount }, (_, i) => {
+          const suffix = i === 0 ? "" : `_v${i}`;
+          return (
+            <div
+              key={i}
+              className="flex-1 rounded-xl overflow-hidden border border-white/[0.04] bg-black/20 min-h-0"
+            >
+              <img
+                src={srcFn(egid, suffix)}
+                alt={`${label} view ${i}`}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement;
+                  el.parentElement!.innerHTML =
+                    '<div class="w-full h-full flex items-center justify-center text-slate-600 text-[10px]">N/A</div>';
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WeightColumn({
+  views,
+  aggregatedWwr,
+}: {
+  views: ViewData[] | null;
+  aggregatedWwr: number;
+}) {
+  const viewList = views ?? [{ wwr: aggregatedWwr, weight: 1.0, n_windows: 0, confidence: 0 }];
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex items-center gap-2 mb-2.5 shrink-0">
+        <span className="w-5 h-5 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-[10px] font-mono font-semibold text-cyan-400">
+          5
+        </span>
+        <div>
+          <div className="text-xs font-medium text-slate-300 leading-none">
+            Weight
+          </div>
+          <div className="text-[9px] text-slate-500 mt-0.5 leading-none">
+            View contribution
+          </div>
+        </div>
+      </div>
+      <div className="flex-1 flex flex-col gap-1.5 min-h-0">
+        {viewList.map((v, i) => {
+          const maxWeight = Math.max(...viewList.map((vv) => vv.weight));
+          const barWidth = maxWeight > 0 ? (v.weight / maxWeight) * 100 : 0;
+
+          return (
+            <div
+              key={i}
+              className="flex-1 rounded-xl border border-white/[0.04] bg-black/20 flex flex-col items-center justify-center gap-2 px-3"
+            >
+              <div className="text-[9px] text-slate-500 uppercase tracking-wider">
+                {i === 0 ? "Primary" : `View ${i + 1}`}
+              </div>
+              <div className="font-mono text-lg font-semibold text-cyan-400 leading-none">
+                {v.weight.toFixed(1)}
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-white/[0.04] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-cyan-500/50 transition-all"
+                  style={{ width: `${barWidth}%` }}
+                />
+              </div>
+              <div className="text-[10px] font-mono text-slate-400">
+                WWR {(v.wwr * 100).toFixed(1)}%
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
