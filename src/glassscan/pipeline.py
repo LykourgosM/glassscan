@@ -91,6 +91,9 @@ def run_cv_pipeline(
         logger.warning("No buildings provided")
         return result
 
+    # Normalise egids to strings
+    buildings = [{**b, "egid": str(b["egid"])} for b in buildings]
+
     # 1. Fetch
     logger.info("Fetching images for %d buildings...", len(buildings))
     result.images = fetch_batch(

@@ -64,11 +64,17 @@ def _offset_point(lat: float, lon: float, bearing_deg: float, distance_m: float)
 
 def _query_metadata(
     lat: float, lon: float, api_key: str, radius: int,
+    source: str = "outdoor",
 ) -> dict | None:
     """Query the Street View metadata API. Returns the JSON body or None."""
     resp = requests.get(
         _METADATA_URL,
-        params={"location": f"{lat},{lon}", "radius": radius, "key": api_key},
+        params={
+            "location": f"{lat},{lon}",
+            "radius": radius,
+            "source": source,
+            "key": api_key,
+        },
         timeout=10,
     )
     resp.raise_for_status()

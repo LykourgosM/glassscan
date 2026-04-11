@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { DashboardData, Building } from "./types";
-import Map from "./components/Map";
-import Sidebar from "./components/Sidebar";
+import MapView from "./components/MapView";
+import Header from "./components/Header";
+import BuildingPanel from "./components/BuildingPanel";
+import DistributionChart from "./components/DistributionChart";
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -20,9 +22,11 @@ export default function App() {
 
   if (error) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-900 text-white">
+      <div className="h-full flex items-center justify-center bg-slate-950 text-white font-sans">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Failed to load data</h1>
+          <h1 className="text-2xl font-display font-bold mb-2">
+            Failed to load data
+          </h1>
           <p className="text-slate-400">{error}</p>
           <p className="text-slate-500 mt-4 text-sm">
             Make sure buildings.json is in the same directory.
@@ -34,22 +38,35 @@ export default function App() {
 
   if (!data) {
     return (
-      <div className="h-full flex items-center justify-center bg-slate-900 text-white">
-        <p className="text-xl">Loading...</p>
+      <div className="h-full flex items-center justify-center bg-slate-950">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-2 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin mb-4" />
+          <p className="text-sm text-slate-500 font-sans">
+            Loading buildings...
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex">
-      <Sidebar stats={data.stats} selected={selected} />
-      <div className="flex-1 relative">
-        <Map
-          buildings={data.buildings}
-          onSelect={setSelected}
-          selected={selected}
+    <div className="h-full relative font-sans text-white">
+      <MapView
+        buildings={data.buildings}
+        onSelect={setSelected}
+        selected={selected}
+      />
+
+      <Header stats={data.stats} />
+
+      <DistributionChart buildings={data.buildings} />
+
+      {selected && (
+        <BuildingPanel
+          building={selected}
+          onClose={() => setSelected(null)}
         />
-      </div>
+      )}
     </div>
   );
 }
