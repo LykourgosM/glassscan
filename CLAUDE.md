@@ -80,7 +80,8 @@ run_cv_pipeline.
   contour (approximate). With 3D building geometry + known camera position from Street View
   metadata, we can project exact facade corners into the image and compute a geometrically
   exact homography. Current module serves as fallback when 3D data is unavailable.
-- VLM validation: use a vision-language model (Claude, GPT-4V) to spot-check segmentation
-  outputs. Could estimate WWR directly from images, flag disagreements with SegFormer masks,
-  or filter bad images before segmentation. Not a primary approach (no pixel masks, API cost
-  at scale, less reproducible) but useful as a quality signal alongside the CV pipeline.
+- VLM-weighted multi-view aggregation: fetch 2-3 views per building, run segmentation on
+  each, then send raw image + overlay to GPT-4o-mini to score segmentation quality (0-1).
+  Use scores as weights when averaging WWR across views. Cost: ~$1-2 for full dataset.
+  Gives both quality filtering and multi-view aggregation. Needs OpenAI API key.
+  Do this last to avoid unnecessary spend during development.

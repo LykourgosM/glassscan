@@ -56,7 +56,7 @@ _CMP_REMAP = np.array([
     1,  # molding    → wall
     1,  # deco       → wall
     1,  # pillar     → wall
-    1,  # shop       → wall
+    2,  # shop       → window
 ], dtype=np.uint8)
 
 # ADE20K class IDs that count as "building"

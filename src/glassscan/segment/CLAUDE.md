@@ -36,7 +36,8 @@ correctly finds buildings but can't distinguish windows. Solution: combine both.
 | 1      | background  | 0 (background) |
 | 2      | facade      | 1 (wall)       |
 | 3      | window      | 2 (window)     |
-| 4-12   | door, cornice, sill, balcony, blind, molding, deco, pillar, shop | 1 (wall) |
+| 4-11   | door, cornice, sill, balcony, blind, molding, deco, pillar | 1 (wall) |
+| 12     | shop       | 2 (window) |
 
 ## Performance
 - ~2x inference time vs single model (two forward passes)
