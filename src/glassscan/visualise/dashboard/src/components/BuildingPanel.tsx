@@ -175,7 +175,7 @@ export default function BuildingPanel({ building: b, onClose }: Props) {
                     step={2}
                     label="Segment"
                     sublabel="Wall / Window / BG"
-                    src={`./images/${b.egid}.jpg`}
+                    src={`./overlays/${b.egid}.jpg`}
                   />
                   <PipelineStage
                     step={3}
