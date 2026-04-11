@@ -36,7 +36,7 @@ make pipeline      # run end-to-end pipeline
 - **wwr** — DONE (29 tests). Pixel counting + connected components for window detection.
 - **predict** — DONE (29 tests). Feature-agnostic XGBoost regression with quantile prediction intervals.
 - **pipeline.py** — DONE (21 tests). Orchestrator chaining all modules with lazy imports.
-- **visualise** — stub
+- **visualise** — DONE (13 tests). Python export + React/TypeScript dashboard.
 
 ## Conventions
 - Python 3.11, PyTorch + HuggingFace Transformers

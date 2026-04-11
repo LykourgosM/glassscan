@@ -1,0 +1,23 @@
+{
+  "buildings": [
+    {"egid": "ZH001", "lat": 47.3697, "lon": 8.5387, "wwr": 0.23, "source": "measured", "confidence": 0.95, "n_windows": 15, "prediction_interval": null, "metadata": {"construction_year": 1905, "building_category": "commercial"}},
+    {"egid": "ZH002", "lat": 47.3710, "lon": 8.5395, "wwr": 0.35, "source": "measured", "confidence": 0.88, "n_windows": 22, "prediction_interval": null, "metadata": {"construction_year": 1998, "building_category": "commercial"}},
+    {"egid": "ZH003", "lat": 47.3685, "lon": 8.5370, "wwr": 0.15, "source": "measured", "confidence": 0.92, "n_windows": 8, "prediction_interval": null, "metadata": {"construction_year": 1920, "building_category": "residential"}},
+    {"egid": "ZH004", "lat": 47.3702, "lon": 8.5410, "wwr": 0.42, "source": "measured", "confidence": 0.90, "n_windows": 30, "prediction_interval": null, "metadata": {"construction_year": 2015, "building_category": "commercial"}},
+    {"egid": "ZH005", "lat": 47.3690, "lon": 8.5350, "wwr": 0.18, "source": "measured", "confidence": 0.93, "n_windows": 10, "prediction_interval": null, "metadata": {"construction_year": 1935, "building_category": "residential"}},
+    {"egid": "ZH006", "lat": 47.3715, "lon": 8.5365, "wwr": 0.28, "source": "predicted", "confidence": null, "n_windows": null, "prediction_interval": [0.22, 0.34], "metadata": {"construction_year": 1975, "building_category": "residential"}},
+    {"egid": "ZH007", "lat": 47.3678, "lon": 8.5400, "wwr": 0.31, "source": "predicted", "confidence": null, "n_windows": null, "prediction_interval": [0.25, 0.37], "metadata": {"construction_year": 1988, "building_category": "commercial"}},
+    {"egid": "ZH008", "lat": 47.3700, "lon": 8.5340, "wwr": 0.12, "source": "predicted", "confidence": null, "n_windows": null, "prediction_interval": [0.08, 0.16], "metadata": {"construction_year": 1910, "building_category": "residential"}},
+    {"egid": "ZH009", "lat": 47.3720, "lon": 8.5420, "wwr": 0.38, "source": "predicted", "confidence": null, "n_windows": null, "prediction_interval": [0.30, 0.46], "metadata": {"construction_year": 2005, "building_category": "commercial"}},
+    {"egid": "ZH010", "lat": 47.3665, "lon": 8.5380, "wwr": 0.20, "source": "predicted", "confidence": null, "n_windows": null, "prediction_interval": [0.15, 0.25], "metadata": {"construction_year": 1960, "building_category": "industrial"}}
+  ],
+  "stats": {
+    "total": 10,
+    "measured": 5,
+    "predicted": 5,
+    "mean_wwr": 0.262,
+    "wwr_by_era": {"pre-1950": 0.17, "1950-1980": 0.24, "1980-2000": 0.32, "post-2000": 0.40},
+    "wwr_by_type": {"residential": 0.19, "commercial": 0.35, "industrial": 0.16},
+    "feature_importance": {"construction_year": 0.45, "floor_count": 0.20, "building_category": 0.15, "canton": 0.10, "lat": 0.05, "lon": 0.05}
+  }
+}
