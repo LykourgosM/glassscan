@@ -70,8 +70,15 @@ module API changes (e.g., new param on segment_batch), update the call in
 run_cv_pipeline.
 
 ## Known limitations / future improvements
-- Street View images capture multiple buildings per frame. Accept for now; future fix
-  via swissBUILDINGS3D (project building into image to mask neighbors). See `fetch/CLAUDE.md`.
+- **Swiss building geometry integration — shared prerequisite for three wins below.**
+  Data access chain: for any building coordinate, the nearest GWR point gives EGID +
+  attributes (garea, gvol, storeys, year). That EGID then indexes into swissBUILDINGS3D
+  for the 2D footprint + building height. For non-EGID cantons (e.g. VD, where the
+  hackathon is held), the link from GWR POINT to swissBUILDINGS3D polygon is a spatial
+  point-in-polygon join — still works, just one extra step. This single integration
+  unlocks: (a) neighbor masking at fetch time, (b) adaptive FOV per pano/facade at
+  fetch time, (c) geometrically exact rectify homography. All three are detailed in
+  the bullets below.
 - Road direction estimated as perpendicular to building→panorama bearing. Future fix:
   OSM Overpass API for actual road geometry.
 - Swiss data source details (swissBUILDINGS3D, GWR, swissTLM3D) documented in `fetch/CLAUDE.md`.
@@ -80,6 +87,15 @@ run_cv_pipeline.
   contour (approximate). With 3D building geometry + known camera position from Street View
   metadata, we can project exact facade corners into the image and compute a geometrically
   exact homography. Current module serves as fallback when 3D data is unavailable.
+- Adaptive FOV from building polygon (fetch-time): current fetch uses fixed fov=70, which
+  crops close buildings and over-zooms out distant ones. With the 2D footprint + building
+  height (from swissBUILDINGS3D, or GWR `gvol/garea` as a proxy), identify the visible
+  facade(s) from each pano — polygon edges whose outward normal faces the camera — then
+  project their 4 corners into image space and set FOV to span them with margin. The same
+  corner projections feed directly into the rectify improvement above (geometrically exact
+  homography from known-good corners), so one integration unlocks both wins. For non-EGID
+  cantons (e.g. VD, where the hackathon is held), join GWR POINT → swissBUILDINGS3D polygon
+  via point-in-polygon to get the same data.
 - Multi-view aggregation: `aggregate_wwr()` merges multiple views per building.
   Default weights: primary view=1.0, secondary views=0.5. Accepts a flat list of
   custom weights to override defaults.
