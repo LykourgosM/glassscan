@@ -204,7 +204,12 @@ def aggregate_wwr(
             continue
 
         total_w = sum(w for _, w in views)
-        wwr = sum(r.wwr * w for r, w in views) / total_w
+        if total_w == 0:
+            # All views scored zero — fall back to equal weighting
+            total_w = len(views)
+            wwr = sum(r.wwr for r, _ in views) / total_w
+        else:
+            wwr = sum(r.wwr * w for r, w in views) / total_w
         window_px = sum(r.window_area_px for r, _ in views)
         wall_px = sum(r.wall_area_px for r, _ in views)
         n_windows = max(r.n_windows for r, _ in views)

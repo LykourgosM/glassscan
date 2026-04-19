@@ -106,11 +106,21 @@ The overlay images to evaluate are at:
 ## Batching
 
 There may be hundreds of buildings with multiple views each. Process them in
-batches of ~20 buildings at a time to avoid hitting context limits. After each
-batch, output the JSON for that batch so results are saved incrementally.
+batches of ~50 buildings at a time. After each batch, write the results to
+`weights.json` immediately so progress is saved incrementally. Then compact
+your context (use /compact) before starting the next batch to avoid hitting
+context limits. You do not need to keep previous batch scores in memory
+since they are already saved to the file.
 
-If a session is interrupted, the existing `weights.json` can be loaded and
-only unscored buildings need to be processed in a follow-up session. Merge
+**Before starting, always check progress:**
+
+1. Read the existing `weights.json` (if it exists) to see how many buildings
+   are already scored.
+2. Run `unscored_egids` to get the remaining list.
+3. Report: "X of Y buildings scored. Z remaining. Starting from batch N."
+
+This way, if a session is interrupted and restarted, you pick up where you
+left off rather than re-scoring buildings or losing track of progress. Merge
 new results into the existing file rather than overwriting.
 
 ## Example Scoring
@@ -130,10 +140,21 @@ Extreme close-up of one floor, steep angle, scaffolding blocking half
 the facade, fragmented mask, windows mostly missed.
 Scores: 0.5, 0.3, 0.2, 0.3, 0.3, 0.1 -> weight = 0.26
 
+## IMPORTANT
+
+You MUST visually read and evaluate every single overlay image. Do NOT use
+programmatic scoring, deterministic hashing, file metadata, or any shortcut.
+Every weight must come from actually looking at the image and applying the
+rubric criteria above. There is no way to produce valid scores without
+seeing the images.
+
 ## Notes
 
 - Be consistent across images. If two images have similar issues, give similar scores.
 - A weight of 0.0 means "discard this view entirely" -- use sparingly.
+- Every building must have at least one view with a non-zero weight.
+  If all views are terrible, give the least-bad one a small weight (e.g. 0.1)
+  rather than zeroing them all out. Otherwise the building has no usable WWR.
 - Primary views (view 0) are not inherently better; score purely on quality.
 - Shop windows / retail glazing should count as windows (green). If the model
   missed them, penalise under Window Detection.

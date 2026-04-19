@@ -79,6 +79,7 @@ def export_results(
     output_dir: Path | str,
     metadata_df: pd.DataFrame | None = None,
     per_view_wwr: list | None = None,
+    weights_file: Path | str | None = None,
 ) -> None:
     """Export pipeline results for the dashboard.
 
@@ -92,6 +93,9 @@ def export_results(
         per_view_wwr: Pre-aggregation WWR results (one per image, not
             per building). When provided, per-view data and overlay
             images are exported for multi-view display in the dashboard.
+        weights_file: Path to weights.json (LLM-scored view weights).
+            If provided, per-view weights in buildings.json use these
+            instead of the default 1.0/0.5 scheme.
     """
     from glassscan.pipeline import PipelineResult
 
@@ -122,6 +126,12 @@ def export_results(
     if per_view_wwr is not None:
         for w in per_view_wwr:
             pv_wwr_by_egid[w.egid].append(w)
+
+    # Load LLM weights if available
+    file_weights: dict[str, list[float]] = {}
+    if weights_file is not None:
+        from glassscan.wwr import load_weights
+        file_weights = load_weights(weights_file)
 
     metadata_by_egid: dict[str, dict] = {}
     if metadata_df is not None and "egid" in metadata_df.columns:
@@ -191,14 +201,18 @@ def export_results(
         # Per-view data
         pv = pv_wwr_by_egid.get(egid, [])
         if len(pv) > 1:
-            seen: set[str] = set()
+            fw = file_weights.get(egid, [])
             views = []
-            for pw in pv:
-                w = 1.0 if pw.egid not in seen else 0.5
-                seen.add(pw.egid)
+            for vi, pw in enumerate(pv):
+                if fw and vi < len(fw):
+                    w = fw[vi]
+                elif vi == 0:
+                    w = 1.0
+                else:
+                    w = 0.5
                 views.append({
                     "wwr": round(pw.wwr, 4),
-                    "weight": w,
+                    "weight": round(w, 2),
                     "n_windows": pw.n_windows,
                     "confidence": round(pw.confidence, 3),
                 })
