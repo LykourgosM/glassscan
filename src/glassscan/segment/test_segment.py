@@ -221,6 +221,68 @@ class TestSegmentBatch:
 
 
 # ---------------------------------------------------------------------------
+# Disk cache
+# ---------------------------------------------------------------------------
+
+class TestCache:
+    def test_second_run_skips_inference(self, tmp_path):
+        """Re-running with a populated cache should not invoke the models."""
+        bi = _make_building_image(egid="9001")
+        models = _make_models(ade_class=1, cmp_class=3)
+        first = segment_image(bi, models, save_dir=tmp_path)
+
+        # New models instance; if the cache works, forward() is never called.
+        cold_models = _make_models(ade_class=1, cmp_class=3)
+        cold_models.ade_model.side_effect = RuntimeError("cache miss — ADE called")
+        cold_models.cmp_model.side_effect = RuntimeError("cache miss — CMP called")
+
+        second = segment_image(bi, cold_models, save_dir=tmp_path)
+        assert np.array_equal(second.mask, first.mask)
+        assert second.confidence == pytest.approx(first.confidence)
+
+    def test_batch_mixes_cached_and_fresh(self, tmp_path):
+        """A batch with one cached image + two new ones returns all three in order."""
+        a = _make_building_image(egid="A")
+        models = _make_models(ade_class=1, cmp_class=3)
+        segment_image(a, models, save_dir=tmp_path)  # warm cache for A only
+
+        b = _make_building_image(egid="B")
+        c = _make_building_image(egid="C")
+        results = segment_batch([a, b, c], models, save_dir=tmp_path)
+        assert [r.egid for r in results] == ["A", "B", "C"]
+        # All three masks now cached; re-running returns identical values.
+        again = segment_batch([a, b, c], models, save_dir=tmp_path)
+        for r1, r2 in zip(results, again):
+            assert np.array_equal(r1.mask, r2.mask)
+            assert r1.confidence == pytest.approx(r2.confidence)
+
+    def test_cache_key_respects_view_index(self, tmp_path):
+        """v0 and v1 of the same egid are cached separately."""
+        bi0 = _make_building_image(egid="42")
+        bi1 = BuildingImage(
+            egid="42", image=bi0.image, lat=bi0.lat, lon=bi0.lon,
+            heading=bi0.heading, pitch=bi0.pitch, fov=bi0.fov, view_index=1,
+        )
+        models = _make_models(ade_class=1, cmp_class=3)
+        segment_image(bi0, models, save_dir=tmp_path)
+        segment_image(bi1, models, save_dir=tmp_path)
+        assert (tmp_path / "42_mask.png").exists()
+        assert (tmp_path / "42_v1_mask.png").exists()
+        assert (tmp_path / "metadata.json").exists()
+
+    def test_missing_metadata_triggers_reinference(self, tmp_path):
+        """Mask PNG without a metadata entry should not be used as cache."""
+        bi = _make_building_image(egid="7")
+        models = _make_models(ade_class=1, cmp_class=3)
+        segment_image(bi, models, save_dir=tmp_path)
+        (tmp_path / "metadata.json").unlink()  # mask survives, metadata gone
+        # Should re-run inference rather than load a cached result silently.
+        models2 = _make_models(ade_class=1, cmp_class=3)
+        segment_image(bi, models2, save_dir=tmp_path)
+        models2.ade_model.assert_called()
+
+
+# ---------------------------------------------------------------------------
 # Device detection
 # ---------------------------------------------------------------------------
 

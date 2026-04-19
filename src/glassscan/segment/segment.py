@@ -10,6 +10,7 @@ This avoids the CMP model misclassifying non-building objects as wall.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -180,6 +181,64 @@ def _compute_confidence(
     return 0.0
 
 
+# ── Disk cache ──────────────────────────────────────────────────────────────
+
+_METADATA_FILENAME = "metadata.json"
+
+
+def _cache_key(egid: str, view_index: int) -> str:
+    """Key used in metadata.json and file stems."""
+    return f"{egid}_v{view_index}" if view_index > 0 else egid
+
+
+def _mask_path(save_dir: Path, egid: str, view_index: int) -> Path:
+    return save_dir / f"{_cache_key(egid, view_index)}_mask.png"
+
+
+def _load_metadata(save_dir: Path) -> dict[str, float]:
+    """Load confidence metadata from disk. Returns {} if absent or unreadable."""
+    path = save_dir / _METADATA_FILENAME
+    if not path.exists():
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return {k: float(v) for k, v in data.items()}
+    except (OSError, ValueError, TypeError) as e:
+        logger.warning("Could not read %s (%s); starting fresh", path, e)
+        return {}
+
+
+def _save_metadata(save_dir: Path, metadata: dict[str, float]) -> None:
+    save_dir.mkdir(parents=True, exist_ok=True)
+    with open(save_dir / _METADATA_FILENAME, "w") as f:
+        json.dump(metadata, f, indent=2, sort_keys=True)
+
+
+def _try_load_cached(
+    save_dir: Path,
+    building_image: BuildingImage,
+    metadata: dict[str, float],
+) -> SegmentationResult | None:
+    """Return a cached SegmentationResult if mask PNG + confidence are on disk."""
+    key = _cache_key(building_image.egid, building_image.view_index)
+    if key not in metadata:
+        return None
+    path = _mask_path(save_dir, building_image.egid, building_image.view_index)
+    if not path.exists():
+        return None
+    mask = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if mask is None:
+        return None
+    return SegmentationResult(
+        egid=building_image.egid,
+        mask=mask,
+        confidence=metadata[key],
+        original_image=building_image.image,
+        view_index=building_image.view_index,
+    )
+
+
 @torch.no_grad()
 def segment_image(
     building_image: BuildingImage,
@@ -191,7 +250,19 @@ def segment_image(
 
     Uses two-stage approach: ADE20K for building mask, CMP for wall/window.
     Returns a SegmentationResult with the 3-class mask (same H x W as input).
+
+    If ``save_dir`` is set and both the mask PNG and a ``metadata.json`` entry
+    for this (egid, view_index) already exist there, the cached result is
+    loaded from disk and inference is skipped.
     """
+    if save_dir is not None:
+        metadata = _load_metadata(save_dir)
+        cached = _try_load_cached(save_dir, building_image, metadata)
+        if cached is not None:
+            logger.debug("EGID %s view %d: loaded segmentation from cache",
+                         building_image.egid, building_image.view_index)
+            return cached
+
     img = building_image.image
     h, w = img.shape[:2]
 
@@ -215,8 +286,9 @@ def segment_image(
 
     if save_dir is not None:
         save_dir.mkdir(parents=True, exist_ok=True)
-        suffix = f"_v{vi}" if vi > 0 else ""
-        cv2.imwrite(str(save_dir / f"{building_image.egid}{suffix}_mask.png"), pipeline_mask)
+        cv2.imwrite(str(_mask_path(save_dir, building_image.egid, vi)), pipeline_mask)
+        metadata[_cache_key(building_image.egid, vi)] = confidence
+        _save_metadata(save_dir, metadata)
 
     return result
 
@@ -232,18 +304,40 @@ def segment_batch(
     """Segment a batch of facade images.
 
     If *models* is None, loads automatically (caches for the batch).
+
+    When ``save_dir`` is set, each image whose mask PNG and ``metadata.json``
+    entry already exist on disk is loaded from cache and skipped. Models are
+    only loaded if at least one image needs inference.
     """
+    # Split into cached (load from disk) and to_process (run inference).
+    metadata: dict[str, float] = _load_metadata(save_dir) if save_dir is not None else {}
+    results: list[SegmentationResult | None] = [None] * len(images)
+    to_process: list[tuple[int, BuildingImage]] = []
+
+    for idx, bi in enumerate(images):
+        if save_dir is not None:
+            cached = _try_load_cached(save_dir, bi, metadata)
+            if cached is not None:
+                results[idx] = cached
+                continue
+        to_process.append((idx, bi))
+
+    n_cached = len(images) - len(to_process)
+    if n_cached:
+        logger.info("Loaded %d/%d segmentations from cache", n_cached, len(images))
+
+    if not to_process:
+        return [r for r in results if r is not None]
+
     if models is None:
         models = load_model()
 
-    results: list[SegmentationResult] = []
-
-    for i in range(0, len(images), batch_size):
-        chunk = images[i : i + batch_size]
-        logger.debug("Segmenting batch %d-%d / %d", i, i + len(chunk), len(images))
+    for i in range(0, len(to_process), batch_size):
+        chunk = to_process[i : i + batch_size]
+        logger.debug("Segmenting batch %d-%d / %d", i, i + len(chunk), len(to_process))
 
         # Build batch tensor
-        batch_np = np.stack([_preprocess(img.image) for img in chunk])
+        batch_np = np.stack([_preprocess(bi.image) for _, bi in chunk])
         pixel_values = torch.from_numpy(batch_np).to(models.device)
 
         # Stage 1: ADE20K building masks
@@ -261,7 +355,7 @@ def segment_batch(
         cmp_probs = F.softmax(cmp_up, dim=1).cpu().numpy()
         cmp_preds = cmp_up.argmax(dim=1).cpu().numpy().astype(np.uint8)
 
-        for j, building_image in enumerate(chunk):
+        for j, (orig_idx, building_image) in enumerate(chunk):
             h, w = building_image.image.shape[:2]
 
             building_mask = np.isin(ade_preds[j], _ADE_BUILDING_IDS)
@@ -276,7 +370,7 @@ def segment_batch(
             confidence = _compute_confidence(cmp_probs[j], building_mask)
 
             vi = building_image.view_index
-            result = SegmentationResult(
+            results[orig_idx] = SegmentationResult(
                 egid=building_image.egid,
                 mask=pipeline_mask,
                 confidence=confidence,
@@ -286,10 +380,13 @@ def segment_batch(
 
             if save_dir is not None:
                 save_dir.mkdir(parents=True, exist_ok=True)
-                suffix = f"_v{vi}" if vi > 0 else ""
-                cv2.imwrite(str(save_dir / f"{building_image.egid}{suffix}_mask.png"), pipeline_mask)
+                cv2.imwrite(str(_mask_path(save_dir, building_image.egid, vi)), pipeline_mask)
+                metadata[_cache_key(building_image.egid, vi)] = confidence
 
-            results.append(result)
+        # Flush metadata after each chunk so progress survives interruption.
+        if save_dir is not None:
+            _save_metadata(save_dir, metadata)
 
-    logger.info("Segmented %d images", len(results))
-    return results
+    logger.info("Segmented %d images (%d from cache, %d fresh)",
+                len(images), n_cached, len(to_process))
+    return [r for r in results if r is not None]

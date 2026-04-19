@@ -302,6 +302,46 @@ def fetch_multi_view(
     return results
 
 
+def _load_cached_views(
+    save_dir: Path, egid: str, lat: float, lon: float, max_views: int,
+) -> list[BuildingImage] | None:
+    """Return cached views if at least *max_views* of them are on disk.
+
+    Images are discovered by scanning for ``{egid}.jpg`` then ``{egid}_v{i}.jpg``
+    for i=1,2,... until a gap. Returns None if fewer than *max_views* exist,
+    in which case the caller should fall back to the live API.
+
+    ``pano_id`` and ``heading`` are set to placeholders — downstream modules
+    only read ``egid``, ``image``, ``lat``, ``lon``, and ``view_index``.
+    """
+    indices: list[int] = []
+    if (save_dir / f"{egid}.jpg").exists():
+        indices.append(0)
+    i = 1
+    while (save_dir / f"{egid}_v{i}.jpg").exists():
+        indices.append(i)
+        i += 1
+
+    if len(indices) < max_views:
+        return None
+
+    views: list[BuildingImage] = []
+    for vi in indices[:max_views]:
+        suffix = f"_v{vi}" if vi > 0 else ""
+        path = save_dir / f"{egid}{suffix}.jpg"
+        image = cv2.imdecode(
+            np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR,
+        )
+        if image is None:
+            return None
+        views.append(BuildingImage(
+            egid=egid, image=image, lat=lat, lon=lon,
+            heading=0.0, pitch=DEFAULT_PITCH, fov=DEFAULT_FOV,
+            pano_id="", view_index=vi,
+        ))
+    return views
+
+
 def fetch_batch(
     buildings: list[dict],
     api_key: str,
@@ -347,11 +387,15 @@ def fetch_batch(
 
         egid, lat, lon = b["egid"], b["lat"], b["lon"]
 
-        # Skip if primary image already on disk (single-view only;
-        # multi-view relies on _fetch_from_panorama's disk cache)
-        if max_views <= 1 and save_dir and (save_dir / f"{egid}.jpg").exists():
-            logger.debug("EGID %s already on disk, skipping", egid)
-            continue
+        # Full-cache shortcut: if enough views already on disk, skip all
+        # API calls (including the free metadata lookup).
+        if save_dir is not None:
+            cached = _load_cached_views(save_dir, egid, lat, lon, max_views)
+            if cached is not None:
+                logger.debug("EGID %s fully cached (%d views), skipping API",
+                             egid, len(cached))
+                results.extend(cached)
+                continue
 
         remaining = max_calls - billed
 

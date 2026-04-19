@@ -262,15 +262,43 @@ class TestFetchBatch:
         assert len(results) == 3
 
     @patch("glassscan.fetch.fetch.requests.get")
-    def test_skips_existing(self, mock_get, tmp_path):
-        (tmp_path / "1.jpg").write_bytes(b"existing")
+    def test_cached_building_loaded_from_disk(self, mock_get, tmp_path):
+        """Building with image on disk is returned from cache without API calls."""
+        import cv2
+        import numpy as np
+        # Write a valid JPEG for egid "1"
+        cached_img = np.full((100, 100, 3), 42, dtype=np.uint8)
+        cv2.imwrite(str(tmp_path / "1.jpg"), cached_img)
+
         mock_get.side_effect = lambda *a, **kw: (
             _mock_metadata("OK", 46.51, 6.61, "p") if "radius" in kw.get("params", {})
             else _mock_image_response()
         )
         buildings = [{"egid": str(i), "lat": 46.5, "lon": 6.6} for i in range(3)]
         results = fetch_batch(buildings, "fake-key", save_dir=tmp_path, delay=0)
-        assert len(results) == 2
+        # Cached building appears in results alongside the 2 freshly fetched.
+        assert len(results) == 3
+        assert sorted(r.egid for r in results) == ["0", "1", "2"]
+        cached_result = next(r for r in results if r.egid == "1")
+        assert cached_result.image.shape == (100, 100, 3)
+        assert cached_result.pano_id == ""  # placeholder, since API was skipped
+
+    @patch("glassscan.fetch.fetch.requests.get")
+    def test_multi_view_full_cache_skips_api(self, mock_get, tmp_path):
+        """If max_views images are on disk, no metadata or image API calls fire."""
+        import cv2
+        import numpy as np
+        img = np.full((100, 100, 3), 7, dtype=np.uint8)
+        cv2.imwrite(str(tmp_path / "A.jpg"), img)
+        cv2.imwrite(str(tmp_path / "A_v1.jpg"), img)
+        cv2.imwrite(str(tmp_path / "A_v2.jpg"), img)
+
+        buildings = [{"egid": "A", "lat": 46.5, "lon": 6.6}]
+        results = fetch_batch(buildings, "fake-key", save_dir=tmp_path,
+                              max_views=3, delay=0)
+        assert len(results) == 3
+        assert [r.view_index for r in results] == [0, 1, 2]
+        mock_get.assert_not_called()
 
     @patch("glassscan.fetch.fetch.requests.get")
     def test_multi_view_batch(self, mock_get):
