@@ -110,3 +110,17 @@ run_cv_pipeline.
   Simple 2D version: Leaflet markers + polylines on existing map.
   Advanced 3D version: CesiumJS or deck.gl with building heights from
   swissBUILDINGS3D. 2D version is feasible for hackathon, 3D is stretch goal.
+- **EXPERIMENTAL — pano-centric fetch architecture (NOT committed, future
+  thinking only, only explore AFTER the hackathon).**
+  Current fetch is building-centric: per building, find panos, fetch one narrow
+  image per pano. This re-fetches the same pano N times when N buildings share
+  a street. Speculative redesign: switch to pano-centric — fetch each unique
+  pano once as a full equirectangular 360° (3-4 stitched 120° Static API calls,
+  OR via the Street View Tiles API), cache it, then for any building visible
+  from that pano, crop a rectilinear view at the heading + FOV computed from
+  its 3D corners. At Lausanne scale (~50k buildings) with ~5 buildings/pano,
+  this could drop fetch cost from ~250k images to ~10-40k. Tradeoffs: 3-4× per-
+  pano cost, equirectangular→rectilinear reprojection code (~30 lines cv2),
+  bigger cache (~30 GB for a city). Geometry helpers we build now (e.g.
+  `compute_fov_for_facade`) are forward-compatible with this architecture, so
+  no rework is wasted.
