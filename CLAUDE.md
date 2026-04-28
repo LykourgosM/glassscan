@@ -110,6 +110,25 @@ run_cv_pipeline.
   Simple 2D version: Leaflet markers + polylines on existing map.
   Advanced 3D version: CesiumJS or deck.gl with building heights from
   swissBUILDINGS3D. 2D version is feasible for hackathon, 3D is stretch goal.
+- **3D Wall-mesh rectification (instead of 4-corner cube approximation).**
+  Cell 13 of `notebooks/geometry_single_building.ipynb` currently projects 4
+  corners per facade — footprint endpoints at z=0 (ground) and
+  z=GESAMTHOEHE (roof peak). This overshoots for pitched-roof buildings:
+  GESAMTHOEHE is foundation-to-peak, but the peak sits *inward* from the
+  outer edge (near the roof centerline). At the outer edge the building
+  only reaches the *eave* (DACH_MIN), not the peak — so the projected top
+  corner is "in mid-air above the eave" by 3-7 m worth of image pixels for
+  typical Zurich pitched roofs. Rectified output above the eave is
+  approximate. Roof / dormer windows are misrectified.
+  Proper fix: use the Wall layer's 3D MultiPatch mesh that swissBUILDINGS3D
+  already provides. For each visible footprint edge, find the matching
+  Wall feature, project all its 3D vertices, use the convex hull (or
+  outer-boundary polyline) as the rectification target. More accurate per
+  facade (correct eave heights, handles bay windows / irregular walls);
+  more complex for the homography step (need to pick 4 corner
+  correspondences from a hull rather than from a clean cube). Worth
+  tackling after the simpler approach is end-to-end working.
+
 - **EXPERIMENTAL — pano-centric fetch architecture (NOT committed, future
   thinking only, only explore AFTER the hackathon).**
   Current fetch is building-centric: per building, find panos, fetch one narrow
