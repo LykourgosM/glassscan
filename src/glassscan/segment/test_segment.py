@@ -119,11 +119,17 @@ class TestRemap:
         assert _CMP_REMAP[1] == 0  # background
 
     def test_wall_classes(self):
-        for i in [2, 4, 5, 6, 7, 8, 9, 10, 11, 12]:
+        # Index 12 (shop) intentionally maps to window for energy WWR.
+        # Index 8 (blind) stays as wall because the CMP model can't
+        # distinguish open vs closed shutters and open dominates in
+        # typical Street View captures - see the _CMP_REMAP comment
+        # in segment.py.
+        for i in [2, 4, 5, 6, 7, 8, 9, 10, 11]:
             assert _CMP_REMAP[i] == 1, f"CMP class {i} ({CMP_CLASSES[i]}) should map to wall (1)"
 
-    def test_window_class(self):
+    def test_window_classes(self):
         assert _CMP_REMAP[3] == 2  # window
+        assert _CMP_REMAP[12] == 2  # shop  → counts as window (storefront glazing)
 
     def test_only_three_output_classes(self):
         assert set(_CMP_REMAP) == {0, 1, 2}

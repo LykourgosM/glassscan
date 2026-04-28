@@ -44,6 +44,21 @@ CMP_CLASSES = [
 ]
 
 # CMP → pipeline: 0=background, 1=wall, 2=window
+#
+# Notes:
+# - `shop` (CMP class 12) maps to window: storefront glazing contributes
+#   to the building's energy-relevant glazed area.
+# - `blind` (CMP class 8) maps to wall, but with caveats. The CMP model
+#   doesn't distinguish open vs closed shutters - both look like wooden
+#   panels. A CLOSED shutter covers a window opening (thermally
+#   window-like) and a OPEN shutter is folded against the wall
+#   (thermally wall-like). In Street View captures of occupied buildings
+#   most shutters are partially or fully open, so mapping blind → wall
+#   under-counts the rare closed-shutter case but avoids the much
+#   commoner over-count of open shutters being treated as windows. A
+#   per-shutter open/closed classifier would resolve this properly;
+#   deferred. For the Energy Hackdays, the wall mapping is the safer
+#   choice given the typical capture conditions.
 _CMP_REMAP = np.array([
     0,  # unknown    → background
     0,  # background → background
@@ -53,11 +68,11 @@ _CMP_REMAP = np.array([
     1,  # cornice    → wall
     1,  # sill       → wall
     1,  # balcony    → wall
-    1,  # blind      → wall
+    1,  # blind      → wall    (see note above; open shutters dominate)
     1,  # molding    → wall
     1,  # deco       → wall
     1,  # pillar     → wall
-    2,  # shop       → window
+    2,  # shop       → window  (storefront glazing)
 ], dtype=np.uint8)
 
 # ADE20K class IDs that count as "building"

@@ -110,6 +110,40 @@ run_cv_pipeline.
   Simple 2D version: Leaflet markers + polylines on existing map.
   Advanced 3D version: CesiumJS or deck.gl with building heights from
   swissBUILDINGS3D. 2D version is feasible for hackathon, 3D is stretch goal.
+- **Dashboard "debug pipeline" UI for any building.**
+  Add a route / button to the existing visualise dashboard that lets the
+  user pick a single EGID and see EVERY step of the geometry pipeline
+  for that building, the way `notebooks/geometry_single_building.ipynb`
+  does today: footprint on a map, edge decomposition with outward
+  normals, pano discovery with each filter category, per-pano FOV
+  cones, projected facade quads on the captured Street View images,
+  rectified per-facade outputs, segmentation overlays, per-facade WWR
+  table, and final score×area-weighted building WWR.
+  Two purposes:
+  1. **Demo / explainability** for the hackathon judges — energy data
+     audiences care a lot about "how did you arrive at this number",
+     and being able to walk through one building visually is much more
+     convincing than just a number on a map.
+  2. **Debug** — once the pipeline runs in production batch mode and
+     someone notices "this building's WWR looks wrong", being able to
+     pull up the full pipeline for that single EGID without re-running
+     the notebook by hand is a huge time-saver.
+  Build only after the pipeline is fully running in production. The
+  notebook's cells are the natural source for what each panel should
+  show; most are already self-contained HTML / folium / matplotlib
+  outputs that could be served directly.
+
+- **Production aggregation: NaN + warning instead of `raise`.**
+  The notebook's cell 16 raises a `RuntimeError` when ALL facades for a
+  building have zero valid pixels (catastrophic failure of segmentation
+  or rectification). That's right for single-building debugging - forces
+  investigation. When we extract the area-weighted aggregation into
+  production / `aggregate_wwr`, switch to setting building WWR = `NaN`
+  with a logger warning, so a single broken building doesn't abort a
+  batch run over thousands. Downstream code should treat NaN as
+  "estimate unavailable" and either drop the building from the dashboard
+  or fall back to the predict-module's metadata-only WWR.
+
 - **3D Wall-mesh rectification (instead of 4-corner cube approximation).**
   Cell 13 of `notebooks/geometry_single_building.ipynb` currently projects 4
   corners per facade — footprint endpoints at z=0 (ground) and
