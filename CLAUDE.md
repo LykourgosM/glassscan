@@ -70,6 +70,37 @@ module API changes (e.g., new param on segment_batch), update the call in
 run_cv_pipeline.
 
 ## Known limitations / future improvements
+- **Per-pixel ray-cast target mask (priority — diagnosed root cause of WWR undercount).**
+  Diagnostic on EGID 140108 (Brunngasse 2, ZH; pipeline returned 6.3%, visibly too low):
+  edge 0, the dominant facade with 58% of building weight (19.5m × 20.6m, area 403m²),
+  reported only 3.9% WWR. Visual inspection of its "best view" rectified image showed
+  the frame is not a clean facade — it is a view down a narrow alley between buildings,
+  dominated by two perpendicular alley walls and sky, with edge 0's actual wall as a
+  thin sliver on the left. The view passed all filters because
+  `view_score = facing_dot * source_pixel_area` rewards "perpendicular and close"
+  without checking whether the projected quad actually contains our target building.
+
+  Fix: cast a ray per pixel. We already have all nearby footprints loaded
+  (swissBUILDINGS3D bbox query in cell 9) and GESAMTHOEHE for each. For each image
+  pixel, ray-cast against every nearby footprint, find the closest hit, mark
+  `target_mask[pixel] = True` only if the closest hit is the target. 2.5D ray-casting
+  (vertical-extrusion buildings + height check), ~50 polygons within 50m, vectorisable
+  in numpy — milliseconds on CPU. Strict generalisation of cell 11's pano-level LOS
+  test (one ray per pano → one ray per pixel; same data, same primitive, finer grain).
+
+  Two uses for `target_mask`:
+  1. **View-quality gate (cell 14, before homography):** if target coverage of the
+     projected quad is below ~60%, discard the view. Replaces the current view_score
+     with a real visibility measurement that penalises occlusion.
+  2. **WWR pixel filtering (cell 16):** restrict wall+window pixel counts to pixels
+     inside `target_mask`, so neighbour walls and distant buildings never enter the
+     denominator. ADE20K still useful for filtering vehicles/trees/signs *inside*
+     the target mask but no longer needed to discriminate target-vs-neighbour.
+
+  Plan: prototype on EGID 140108's three edge-0 candidate views first (verify alley
+  view drops to <30% target coverage, street views stay above threshold) before
+  wiring into the pipeline.
+
 - **Swiss building geometry integration — shared prerequisite for three wins below.**
   Data access chain: for any building coordinate, the nearest GWR point gives EGID +
   attributes (garea, gvol, storeys, year). That EGID then indexes into swissBUILDINGS3D
@@ -110,3 +141,70 @@ run_cv_pipeline.
   Simple 2D version: Leaflet markers + polylines on existing map.
   Advanced 3D version: CesiumJS or deck.gl with building heights from
   swissBUILDINGS3D. 2D version is feasible for hackathon, 3D is stretch goal.
+- **Dashboard "debug pipeline" UI for any building.**
+  Add a route / button to the existing visualise dashboard that lets the
+  user pick a single EGID and see EVERY step of the geometry pipeline
+  for that building, the way `notebooks/geometry_single_building.ipynb`
+  does today: footprint on a map, edge decomposition with outward
+  normals, pano discovery with each filter category, per-pano FOV
+  cones, projected facade quads on the captured Street View images,
+  rectified per-facade outputs, segmentation overlays, per-facade WWR
+  table, and final score×area-weighted building WWR.
+  Two purposes:
+  1. **Demo / explainability** for the hackathon judges — energy data
+     audiences care a lot about "how did you arrive at this number",
+     and being able to walk through one building visually is much more
+     convincing than just a number on a map.
+  2. **Debug** — once the pipeline runs in production batch mode and
+     someone notices "this building's WWR looks wrong", being able to
+     pull up the full pipeline for that single EGID without re-running
+     the notebook by hand is a huge time-saver.
+  Build only after the pipeline is fully running in production. The
+  notebook's cells are the natural source for what each panel should
+  show; most are already self-contained HTML / folium / matplotlib
+  outputs that could be served directly.
+
+- **Production aggregation: NaN + warning instead of `raise`.**
+  The notebook's cell 16 raises a `RuntimeError` when ALL facades for a
+  building have zero valid pixels (catastrophic failure of segmentation
+  or rectification). That's right for single-building debugging - forces
+  investigation. When we extract the area-weighted aggregation into
+  production / `aggregate_wwr`, switch to setting building WWR = `NaN`
+  with a logger warning, so a single broken building doesn't abort a
+  batch run over thousands. Downstream code should treat NaN as
+  "estimate unavailable" and either drop the building from the dashboard
+  or fall back to the predict-module's metadata-only WWR.
+
+- **3D Wall-mesh rectification (instead of 4-corner cube approximation).**
+  Cell 13 of `notebooks/geometry_single_building.ipynb` currently projects 4
+  corners per facade — footprint endpoints at z=0 (ground) and
+  z=GESAMTHOEHE (roof peak). This overshoots for pitched-roof buildings:
+  GESAMTHOEHE is foundation-to-peak, but the peak sits *inward* from the
+  outer edge (near the roof centerline). At the outer edge the building
+  only reaches the *eave* (DACH_MIN), not the peak — so the projected top
+  corner is "in mid-air above the eave" by 3-7 m worth of image pixels for
+  typical Zurich pitched roofs. Rectified output above the eave is
+  approximate. Roof / dormer windows are misrectified.
+  Proper fix: use the Wall layer's 3D MultiPatch mesh that swissBUILDINGS3D
+  already provides. For each visible footprint edge, find the matching
+  Wall feature, project all its 3D vertices, use the convex hull (or
+  outer-boundary polyline) as the rectification target. More accurate per
+  facade (correct eave heights, handles bay windows / irregular walls);
+  more complex for the homography step (need to pick 4 corner
+  correspondences from a hull rather than from a clean cube). Worth
+  tackling after the simpler approach is end-to-end working.
+
+- **EXPERIMENTAL — pano-centric fetch architecture (NOT committed, future
+  thinking only, only explore AFTER the hackathon).**
+  Current fetch is building-centric: per building, find panos, fetch one narrow
+  image per pano. This re-fetches the same pano N times when N buildings share
+  a street. Speculative redesign: switch to pano-centric — fetch each unique
+  pano once as a full equirectangular 360° (3-4 stitched 120° Static API calls,
+  OR via the Street View Tiles API), cache it, then for any building visible
+  from that pano, crop a rectilinear view at the heading + FOV computed from
+  its 3D corners. At Lausanne scale (~50k buildings) with ~5 buildings/pano,
+  this could drop fetch cost from ~250k images to ~10-40k. Tradeoffs: 3-4× per-
+  pano cost, equirectangular→rectilinear reprojection code (~30 lines cv2),
+  bigger cache (~30 GB for a city). Geometry helpers we build now (e.g.
+  `compute_fov_for_facade`) are forward-compatible with this architecture, so
+  no rework is wasted.
