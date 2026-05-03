@@ -70,6 +70,37 @@ module API changes (e.g., new param on segment_batch), update the call in
 run_cv_pipeline.
 
 ## Known limitations / future improvements
+- **Per-pixel ray-cast target mask (priority — diagnosed root cause of WWR undercount).**
+  Diagnostic on EGID 140108 (Brunngasse 2, ZH; pipeline returned 6.3%, visibly too low):
+  edge 0, the dominant facade with 58% of building weight (19.5m × 20.6m, area 403m²),
+  reported only 3.9% WWR. Visual inspection of its "best view" rectified image showed
+  the frame is not a clean facade — it is a view down a narrow alley between buildings,
+  dominated by two perpendicular alley walls and sky, with edge 0's actual wall as a
+  thin sliver on the left. The view passed all filters because
+  `view_score = facing_dot * source_pixel_area` rewards "perpendicular and close"
+  without checking whether the projected quad actually contains our target building.
+
+  Fix: cast a ray per pixel. We already have all nearby footprints loaded
+  (swissBUILDINGS3D bbox query in cell 9) and GESAMTHOEHE for each. For each image
+  pixel, ray-cast against every nearby footprint, find the closest hit, mark
+  `target_mask[pixel] = True` only if the closest hit is the target. 2.5D ray-casting
+  (vertical-extrusion buildings + height check), ~50 polygons within 50m, vectorisable
+  in numpy — milliseconds on CPU. Strict generalisation of cell 11's pano-level LOS
+  test (one ray per pano → one ray per pixel; same data, same primitive, finer grain).
+
+  Two uses for `target_mask`:
+  1. **View-quality gate (cell 14, before homography):** if target coverage of the
+     projected quad is below ~60%, discard the view. Replaces the current view_score
+     with a real visibility measurement that penalises occlusion.
+  2. **WWR pixel filtering (cell 16):** restrict wall+window pixel counts to pixels
+     inside `target_mask`, so neighbour walls and distant buildings never enter the
+     denominator. ADE20K still useful for filtering vehicles/trees/signs *inside*
+     the target mask but no longer needed to discriminate target-vs-neighbour.
+
+  Plan: prototype on EGID 140108's three edge-0 candidate views first (verify alley
+  view drops to <30% target coverage, street views stay above threshold) before
+  wiring into the pipeline.
+
 - **Swiss building geometry integration — shared prerequisite for three wins below.**
   Data access chain: for any building coordinate, the nearest GWR point gives EGID +
   attributes (garea, gvol, storeys, year). That EGID then indexes into swissBUILDINGS3D
