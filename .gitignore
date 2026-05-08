@@ -1,6 +1,11 @@
 # Data and models (large files)
-data/
+data/*
 models/
+
+# Tracked exceptions: interactive HTML demos used by the README
+!data/geometry_single_building_map.html
+!data/geometry_single_building_edges.html
+!data/geometry_single_building_panos.html
 
 # Environment
 .env
@@ -34,3 +39,8 @@ src/glassscan/visualise/dashboard/dist/
 # IDE
 .vscode/
 .idea/
+
+# Claude Code internal notes — never track in this repo
+CLAUDE.md
+**/CLAUDE.md
+.claude/
