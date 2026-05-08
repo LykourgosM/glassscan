@@ -16,11 +16,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 import requests
-from dotenv import load_dotenv
 
 from glassscan.types import BuildingImage
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
