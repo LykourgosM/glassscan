@@ -2,7 +2,7 @@
 
 **Window-to-wall ratio estimation for Swiss buildings, from Google Street View imagery and 3D footprints.**
 
-GlassScan measures how much of a building's facade is glazed. The window-to-wall ratio (WWR) is a key parameter in building-stock energy models and a strong driver of retrofit economics, but no central register of it exists. GlassScan estimates it from Google Street View by reasoning about the building's 3D geometry first, planning which panoramas can see each facade, mapping each facade into image space via a calibrated pinhole camera, rectifying it via a homography fit to known 3D corners, and only then performing pixel-level segmentation. Per-facade ratios are aggregated to the building level with a weighting scheme that accounts for both view quality and physical facade area.
+GlassScan measures how much of a building's facade is glazed. The window-to-wall ratio (WWR) is a key parameter in building-stock energy models and a strong driver of retrofit economics, but no central register of it exists. The naive approach is to run a facade parser on a single Street View image, which produces unreliable estimates: occlusion, perspective distortion, neighbour walls, sky, and street clutter all bias the pixel ratio in unpredictable ways. GlassScan addresses this by reasoning about the building's 3D geometry first, planning which panoramas can see each facade, mapping each facade into image space via a calibrated pinhole camera, rectifying it via a homography fit to known 3D corners, and only then performing pixel-level segmentation. Per-facade ratios are aggregated to the building level via a two-factor view score that combines homography conditioning (incidence angle) with effective sampling density (source pixel count), so poor-quality views are automatically downranked.
 
 ![GlassScan dashboard](docs/images/dashboard.png)
 
@@ -18,7 +18,7 @@ The dashboard above shows 651 buildings around Zurich Lindenhof, mean WWR 17.3%,
                               │                                          │
                               └──────────────┬───────────────────────────┘
                                              ▼
-        1. Edge decomposition   2. Pano discovery (BFS)   3. Visibility test (dot product)
+        1. Edge decomposition   2. Pano discovery (breadth-first search)   3. Visibility test (dot product)
                                              │
                                              ▼
         4. 3D → image projection  →  5. Per-edge homography  →  6. Two-stage segmentation
@@ -36,13 +36,13 @@ The reference implementation is `notebooks/geometry_single_building.ipynb`, whic
 
 ### Data sources
 
-- **swissBUILDINGS3D 3.0** (swisstopo). National 3D building dataset. We use the 2D `Floor` layer for footprints and `GESAMTHOEHE` for total building height. Distributed as ESRI File Geodatabase tiles via the swisstopo STAC API.
+- **swissBUILDINGS3D 3.0** (swisstopo). National 3D building dataset. We use the 2D `Floor` layer for footprints and `GESAMTHOEHE` (total building height) for the upper extrusion bound. Distributed as ESRI File Geodatabase tiles via the swisstopo SpatioTemporal Asset Catalog (STAC) API.
 - **GWR** (Federal Register of Buildings and Dwellings). Maps an EGID (Swiss building ID) to coordinates, year of construction, storey count, heating type, gross floor area. For non-EGID cantons (e.g. Vaud), a spatial point-in-polygon join recovers the same link.
 - **Google Street View Static API**. Panorama metadata is free; image fetches cost ~$7 per 1000 calls and are billed against the $200 monthly Maps credit.
 
 ### 0. Coordinate systems
 
-All geometry is performed in the Swiss LV95 frame (EPSG:2056), an oblique conformal Mercator projection of the Bessel 1841 ellipsoid centred on Bern. LV95 is locally Cartesian with axes in metres ($x$ East, $y$ North), so dot products, shoelace areas, and metric distance caps mean what they look like. WGS84 inputs (Street View pano coordinates, GWR points) are reprojected via pyproj's seven-parameter Helmert transformation,
+All geometry is performed in the Swiss national LV95 frame (the Landesvermessung 1995 projection, EPSG:2056), an oblique conformal Mercator projection of the Bessel 1841 ellipsoid centred on Bern. LV95 is locally Cartesian with axes in metres ($x$ East, $y$ North), so dot products, shoelace areas, and metric distance caps mean what they look like. World Geodetic System 1984 (WGS84) inputs (Street View pano coordinates, GWR points) are reprojected via pyproj's seven-parameter Helmert transformation,
 
 $$\begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{LV95}} = \begin{pmatrix} t_x \\ t_y \\ t_z \end{pmatrix} + (1+s) \, R_x(\omega_x) R_y(\omega_y) R_z(\omega_z) \begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{WGS84}},$$
 
@@ -52,7 +52,7 @@ with the CHENyx06 datum-shift parameters. The geocentric coordinates are then pr
 
 A building footprint is a closed polygon with vertices $\{(x_i, y_i)\}_{i=0}^{n-1}$ in LV95. We need a consistent winding so that the outward normal of each edge points away from the interior. The signed area (Shoelace formula) determines orientation:
 
-$$2A_{\text{signed}} = \sum_{i=0}^{n-1} \big(x_i \, y_{i+1} - x_{i+1} \, y_i\big), \qquad \text{the polygon is CCW} \iff A_{\text{signed}} > 0.$$
+$$2A_{\text{signed}} = \sum_{i=0}^{n-1} \big(x_i \, y_{i+1} - x_{i+1} \, y_i\big), \qquad \text{the polygon is counter-clockwise (CCW)} \iff A_{\text{signed}} > 0.$$
 
 We re-orient to CCW via shapely's `orient(...)`. For a CCW edge from $\vec{p}_1 = (x_1, y_1)$ to $\vec{p}_2 = (x_2, y_2)$, the unit tangent is
 
@@ -66,7 +66,7 @@ so for $\hat{t} = (\hat{t}_x, \hat{t}_y)$,
 
 $$\vec{n} = R_{-\pi/2} \, \hat{t} = (\hat{t}_y, \; -\hat{t}_x).$$
 
-This is outward only when the polygon is CCW; for a CW polygon the same formula yields the inward normal, which is exactly why we re-oriented first. The compass bearing of $\vec{n}$ (0° North, 90° East) is
+This is outward only when the polygon is CCW; for a clockwise (CW) polygon the same formula yields the inward normal, which is exactly why we re-oriented first. The compass bearing of $\vec{n}$ (0° North, 90° East) is
 
 $$\beta = \big(\text{atan2}(n_x, \; n_y) \cdot 180/\pi + 360\big) \bmod 360.$$
 
@@ -100,7 +100,7 @@ Every candidate is filtered against six tests:
 
 $$\alpha_{\max} = \max_{e \in \text{visible edges}} \arctan\!\left(\frac{\ell_e^{\perp}}{r_e}\right) > 15°,$$
 
-where $\ell_e^{\perp}$ is the component of edge $e$ orthogonal to the line of sight, and $r_e$ is the distance from pano to edge midpoint. This rejects panos where the building occupies less than $\sim 20\%$ of the FOV.
+where $\ell_e^{\perp}$ is the component of edge $e$ orthogonal to the line of sight, and $r_e$ is the distance from pano to edge midpoint. This rejects panos where the building occupies less than $\sim 20\%$ of the camera's field of view (FOV).
 
 6. **Too-close rejection.** Distance to nearest *visible* edge $\geq 5$ m so the camera is not pressed against the wall.
 
@@ -206,7 +206,7 @@ The "$\sim$" denotes equality up to scale. Cross-product elimination of the scal
 
 $$A \vec{h} = \vec{0}, \qquad A_i = \begin{pmatrix} -x_i & -y_i & -1 & 0 & 0 & 0 & x_i x'_i & y_i x'_i & x'_i \\ 0 & 0 & 0 & -x_i & -y_i & -1 & x_i y'_i & y_i y'_i & y'_i \end{pmatrix}.$$
 
-With four correspondences $A \in \mathbb{R}^{8 \times 9}$. The minimum-norm non-trivial solution is the right singular vector of $A$ corresponding to the smallest singular value, computed via SVD. (This is what `cv2.getPerspectiveTransform` does internally for the four-point case.) The rectified facade is then
+With four correspondences $A \in \mathbb{R}^{8 \times 9}$. The minimum-norm non-trivial solution is the right singular vector of $A$ corresponding to the smallest singular value, computed via singular value decomposition (SVD). This is what `cv2.getPerspectiveTransform` does internally for the four-point case. The rectified facade is then
 
 $$I_{\text{rect}}(p') = I_{\text{src}}\!\big(\mathbf{H}^{-1} p'\big),$$
 
@@ -235,11 +235,11 @@ The same `facing_dot` quantity therefore appears three times: as a sign test for
 
 ### 6. Two-stage semantic segmentation
 
-A single facade-parsing model hallucinates wall structure on trees, vehicles, and reflective surfaces, so the rectified images go through two SegFormer-B5 models in cascade.
+A single facade-parsing model hallucinates wall structure on trees, vehicles, and reflective surfaces, so the rectified images go through two pre-trained SegFormer-B5 models in cascade. The contribution at this stage is the integration: which model filters which clutter, the 12-class to 3-class remap, and the confidence proxy.
 
-**Stage 1: ADE20K** (150 scene classes). Classifies pixels as building or non-building. Filters sky, pavement, vegetation, pedestrians, vehicles. Produces a binary building mask $\mathcal{B}$.
+**Stage 1: ADE20K-pretrained SegFormer-B5** (150 scene classes). Classifies pixels as building or non-building. Filters sky, pavement, vegetation, pedestrians, vehicles. Produces a binary building mask $\mathcal{B}$.
 
-**Stage 2: CMP Facades** (12 facade classes). Inside the building region, classifies wall, window, door, cornice, balcony, etc. The 12 classes are remapped to a 3-class output:
+**Stage 2: CMP-Facades-pretrained SegFormer-B5** (12 facade classes; CMP is the Centre for Machine Perception at Czech Technical University Prague, who curated the dataset). Inside the building region, classifies wall, window, door, cornice, balcony, etc. The 12 classes are remapped to a 3-class output:
 
 | Output class | CMP source classes |
 |--------------|--------------------|
@@ -249,7 +249,7 @@ A single facade-parsing model hallucinates wall structure on trees, vehicles, an
 
 The combined per-pixel mask is
 
-$$M(x, y) = \begin{cases} \text{CMP}_{\text{remap}}(x, y) & \text{if ADE}(x, y) \in \mathcal{B} \\ 0 & \text{otherwise.} \end{cases}$$
+$$M(x, y) = \begin{cases} \text{CMP}_{\text{remap}}(x, y) & \text{if } (x, y) \in \mathcal{B} \\ 0 & \text{otherwise.} \end{cases}$$
 
 A pre-segmentation safety step zeros out any pure-black pixel from the rectified image (these come from off-frame regions filled with BORDER_CONSTANT during warpPerspective and would otherwise confuse the ADE20K head).
 
@@ -283,6 +283,18 @@ with $s_i$ the view score from §5 and $A_i = \ell_i \cdot H$ the real-world fac
 The product $w_i = s_i \cdot A_i$ thus combines a physical contribution weight with an approximate statistical weight. A small alley-side facade seen at a grazing angle vanishes; a large street-facing facade seen square-on dominates.
 
 A failure mode: if every facade has $N_i = 0$ (catastrophic segmentation or rectification failure), the notebook raises `RuntimeError`. In production batch mode this should be replaced with `NaN` plus a logger warning so a single broken building does not abort a batch.
+
+## Limitations and failure modes
+
+The pipeline has not been validated against on-site facade surveys; the building-level estimate is internally consistent (the per-facade Bernoulli variance shrinks with pixel count, the score-weighted mean is well-defined) but absolute accuracy at the per-building level is unproven without ground truth. Calibration against a curated sample is the obvious next step.
+
+Known systematic biases:
+
+- **Per-pixel target masking is not yet implemented.** The view score $s_{ij}$ rewards "perpendicular and close" but does not check whether the projected quad actually contains the target building. A view down a narrow alley can pass all filters while showing mostly neighbour walls, biasing WWR low. The fix is a per-pixel ray cast against nearby footprints (we already have all of them loaded for the line-of-sight test) so that pixels whose closest-hit footprint is not the target are excluded from both view selection and the WWR denominator.
+- **Pitched-roof eave height is approximated.** The four 3D corners use $z = \text{GESAMTHOEHE}$ (foundation to peak) for the upper edge. For pitched-roof buildings, the peak sits inward from the outer wall and the actual eave is lower (`DACH_MIN`), so the projected top corner sits "in mid-air" by 3-7 m of image pixels for typical Zurich roofs. Roof and dormer windows are misrectified. The proper fix uses the swissBUILDINGS3D `Wall` layer's 3D MultiPatch mesh.
+- **Reflective and dark-glass facades.** SegFormer trained on CMP Facades was not exposed to fully-glazed modern facades; our two-stage cascade helps but is imperfect.
+- **Street View coverage and freshness.** Imagery is typically 1-3 years old, sparse in rural Switzerland, and seasonally biased (summer vegetation, snow). Confidence scoring downweights low-information facades but cannot recover an unseen wall.
+- **Single-building debugging mode.** When all facades have zero usable pixels, the notebook raises `RuntimeError`. In production batch mode this should return `NaN` plus a logger warning so a single broken building does not abort the run.
 
 ## Interactive demos
 
