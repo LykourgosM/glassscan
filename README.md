@@ -44,7 +44,25 @@ The reference implementation is `notebooks/geometry_single_building.ipynb`, whic
 
 All geometry is performed in the Swiss national LV95 frame (the Landesvermessung 1995 projection, EPSG:2056), an oblique conformal Mercator projection of the Bessel 1841 ellipsoid centred on Bern. LV95 is locally Cartesian with axes in metres ($x$ East, $y$ North), so dot products, shoelace areas, and metric distance caps mean what they look like. World Geodetic System 1984 (WGS84) inputs (Street View pano coordinates, GWR points) are reprojected via pyproj's seven-parameter Helmert transformation,
 
-$$\begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{LV95}} = \begin{pmatrix} t_x \\ t_y \\ t_z \end{pmatrix} + (1+s) \, R_x(\omega_x) R_y(\omega_y) R_z(\omega_z) \begin{pmatrix} X \\ Y \\ Z \end{pmatrix}_{\text{WGS84}},$$
+$$
+\begin{pmatrix}
+X \\
+Y \\
+Z
+\end{pmatrix}_{\text{LV95}}
+=
+\begin{pmatrix}
+t_x \\
+t_y \\
+t_z
+\end{pmatrix}
++ (1+s) \, R_x(\omega_x) R_y(\omega_y) R_z(\omega_z)
+\begin{pmatrix}
+X \\
+Y \\
+Z
+\end{pmatrix}_{\text{WGS84}},
+$$
 
 with the CHENyx06 datum-shift parameters. The geocentric coordinates are then projected to LV95 via the swisstopo Hayford-projection equations. Doing all geometry directly in WGS84 would corrupt every angular and metric test.
 
@@ -60,7 +78,18 @@ $$\hat{t} = \frac{\vec{p}_2 - \vec{p}_1}{\ell}, \qquad \ell = \|\vec{p}_2 - \vec
 
 The outward unit normal is the tangent rotated 90° clockwise. The 2D rotation matrix by angle $-\pi/2$ is
 
-$$R_{-\pi/2} = \begin{pmatrix} \cos(-\pi/2) & -\sin(-\pi/2) \\ \sin(-\pi/2) & \cos(-\pi/2) \end{pmatrix} = \begin{pmatrix} 0 & 1 \\ -1 & 0 \end{pmatrix},$$
+$$
+R_{-\pi/2} =
+\begin{pmatrix}
+\cos(-\pi/2) & -\sin(-\pi/2) \\
+\sin(-\pi/2) & \cos(-\pi/2)
+\end{pmatrix}
+=
+\begin{pmatrix}
+0 & 1 \\
+-1 & 0
+\end{pmatrix},
+$$
 
 so for $\hat{t} = (\hat{t}_x, \hat{t}_y)$,
 
@@ -158,7 +187,15 @@ $$\vec{r}_w = \vec{f}_w \times \hat{z}_w, \qquad \vec{r}_w \leftarrow \vec{r}_w 
 
 and the camera-down axis is $\vec{d}_w = \vec{f}_w \times \vec{r}_w$. The world-to-camera rotation is then
 
-$$R = \begin{pmatrix} \vec{r}_w^{\top} \\ \vec{d}_w^{\top} \\ \vec{f}_w^{\top} \end{pmatrix} \in SO(3).$$
+$$
+R =
+\begin{pmatrix}
+\vec{r}_w^{\top} \\
+\vec{d}_w^{\top} \\
+\vec{f}_w^{\top}
+\end{pmatrix}
+\in SO(3).
+$$
 
 The camera centre $\vec{C}$ sits at the pano position, 1.5 m above ground. World corners transform to camera frame by
 
@@ -166,7 +203,16 @@ $$\vec{P}_{\text{cam}} = R \, (\vec{P}_w - \vec{C}).$$
 
 **Intrinsics.** A Street View image is $W = 400$ pixels square with FOV 70°, zero skew, square pixels, principal point at the image centre. The intrinsic matrix is
 
-$$K = \begin{pmatrix} f & 0 & c_x \\ 0 & f & c_y \\ 0 & 0 & 1 \end{pmatrix}, \qquad f = \frac{W/2}{\tan(\text{FOV}/2)} \approx 285 \text{ px}, \qquad c_x = c_y = W/2 = 200 \text{ px}.$$
+$$
+K =
+\begin{pmatrix}
+f & 0 & c_x \\
+0 & f & c_y \\
+0 & 0 & 1
+\end{pmatrix},
+\qquad f = \frac{W/2}{\tan(\text{FOV}/2)} \approx 285 \text{ px},
+\qquad c_x = c_y = W/2 = 200 \text{ px}.
+$$
 
 **Projection.** The full pinhole map from world to image in homogeneous coordinates is
 
@@ -200,11 +246,28 @@ $$W_{\text{rect}} = 30 \cdot \ell, \qquad H_{\text{rect}} = 30 \cdot H.$$
 
 A planar homography $\mathbf{H} \in \mathbb{R}^{3 \times 3}$ relates the four source corners $\vec{x}_i$ to the four destination corners $\vec{x}'_i$:
 
-$$\vec{x}'_i \sim \mathbf{H} \vec{x}_i, \qquad \mathbf{H} = \begin{pmatrix} h_{11} & h_{12} & h_{13} \\ h_{21} & h_{22} & h_{23} \\ h_{31} & h_{32} & h_{33} \end{pmatrix}.$$
+$$
+\vec{x}'_i \sim \mathbf{H} \vec{x}_i,
+\qquad
+\mathbf{H} =
+\begin{pmatrix}
+h_{11} & h_{12} & h_{13} \\
+h_{21} & h_{22} & h_{23} \\
+h_{31} & h_{32} & h_{33}
+\end{pmatrix}.
+$$
 
 The "$\sim$" denotes equality up to scale. Cross-product elimination of the scale gives, for each correspondence, two linear equations in the nine unknowns $\vec{h} = (h_{11}, \ldots, h_{33})^\top$. The Direct Linear Transform stacks these into
 
-$$A \vec{h} = \vec{0}, \qquad A_i = \begin{pmatrix} -x_i & -y_i & -1 & 0 & 0 & 0 & x_i x'_i & y_i x'_i & x'_i \\ 0 & 0 & 0 & -x_i & -y_i & -1 & x_i y'_i & y_i y'_i & y'_i \end{pmatrix}.$$
+$$
+A \vec{h} = \vec{0},
+\qquad
+A_i =
+\begin{pmatrix}
+-x_i & -y_i & -1 & 0 & 0 & 0 & x_i x'_i & y_i x'_i & x'_i \\
+0 & 0 & 0 & -x_i & -y_i & -1 & x_i y'_i & y_i y'_i & y'_i
+\end{pmatrix}.
+$$
 
 With four correspondences $A \in \mathbb{R}^{8 \times 9}$. The minimum-norm non-trivial solution is the right singular vector of $A$ corresponding to the smallest singular value, computed via singular value decomposition (SVD). This is what `cv2.getPerspectiveTransform` does internally for the four-point case. The rectified facade is then
 
@@ -249,7 +312,13 @@ A single facade-parsing model hallucinates wall structure on trees, vehicles, an
 
 The combined per-pixel mask is
 
-$$M(x, y) = \begin{cases} \text{CMP}_{\text{remap}}(x, y) & \text{if } (x, y) \in \mathcal{B} \\ 0 & \text{otherwise.} \end{cases}$$
+$$
+M(x, y) =
+\begin{cases}
+\text{CMP}_{\text{remap}}(x, y) & \text{if } (x, y) \in \mathcal{B} \\
+0 & \text{otherwise.}
+\end{cases}
+$$
 
 A pre-segmentation safety step zeros out any pure-black pixel from the rectified image (these come from off-frame regions filled with BORDER_CONSTANT during warpPerspective and would otherwise confuse the ADE20K head).
 
