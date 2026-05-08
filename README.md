@@ -68,7 +68,7 @@ $$\vec{n} = R_{-\pi/2} \, \hat{t} = (\hat{t}_y, \; -\hat{t}_x).$$
 
 This is outward only when the polygon is CCW; for a CW polygon the same formula yields the inward normal, which is exactly why we re-oriented first. The compass bearing of $\vec{n}$ (0° North, 90° East) is
 
-$$\beta = \big(\operatorname{atan2}(n_x, \; n_y) \cdot 180/\pi + 360\big) \bmod 360.$$
+$$\beta = \big(\text{atan2}(n_x, \; n_y) \cdot 180/\pi + 360\big) \bmod 360.$$
 
 Edges shorter than 3 m are dropped (chamfered corners, party walls, irrelevant detail). Each remaining edge becomes a candidate facade carrying $(\vec{p}_1, \vec{p}_2, \vec{m}, \vec{n}, \ell, \beta)$, where $\vec{m} = \tfrac{1}{2}(\vec{p}_1 + \vec{p}_2)$ is the midpoint.
 
@@ -132,7 +132,7 @@ The wall passes the facing test iff $\text{facing\_dot} > 0$.
 
 **FOV test.** Given the pano's heading $h_{\text{cam}}$ (degrees, compass), compute the bearing from camera to edge midpoint,
 
-$$\beta_{\text{edge}} = \operatorname{atan2}(m_x - c_x, \, m_y - c_y) \cdot 180/\pi,$$
+$$\beta_{\text{edge}} = \text{atan2}(m_x - c_x, \, m_y - c_y) \cdot 180/\pi,$$
 
 and check that the edge falls within the camera's horizontal FOV,
 
@@ -158,7 +158,7 @@ $$\vec{r}_w = \vec{f}_w \times \hat{z}_w, \qquad \vec{r}_w \leftarrow \vec{r}_w 
 
 and the camera-down axis is $\vec{d}_w = \vec{f}_w \times \vec{r}_w$. The world-to-camera rotation is then
 
-$$R = \begin{pmatrix} \rule[-1ex]{0pt}{2.5ex} \;\vec{r}_w^{\;\top} \; \\ \rule[-1ex]{0pt}{2.5ex} \;\vec{d}_w^{\;\top}\; \\ \rule[-1ex]{0pt}{2.5ex} \;\vec{f}_w^{\;\top}\; \end{pmatrix} \in SO(3).$$
+$$R = \begin{pmatrix} \vec{r}_w^{\top} \\ \vec{d}_w^{\top} \\ \vec{f}_w^{\top} \end{pmatrix} \in SO(3).$$
 
 The camera centre $\vec{C}$ sits at the pano position, 1.5 m above ground. World corners transform to camera frame by
 
@@ -267,7 +267,7 @@ Windows in blue, walls in green. The per-facade WWR and pixel counts are printed
 
 On each rectified facade image, the per-facade ratio is a Bernoulli-style proportion estimator over the facade pixel set:
 
-$$\widehat{\text{WWR}}_i = \frac{|\{M = 2\}|_i}{|\{M = 1\}|_i + |\{M = 2\}|_i}, \qquad \operatorname{Var}(\widehat{\text{WWR}}_i) \approx \frac{\widehat{\text{WWR}}_i (1 - \widehat{\text{WWR}}_i)}{N_i},$$
+$$\widehat{\text{WWR}}_i = \frac{|\{M = 2\}|_i}{|\{M = 1\}|_i + |\{M = 2\}|_i}, \qquad \text{Var}(\widehat{\text{WWR}}_i) \approx \frac{\widehat{\text{WWR}}_i (1 - \widehat{\text{WWR}}_i)}{N_i},$$
 
 where $N_i = |\{M = 1\}|_i + |\{M = 2\}|_i$ is the total facade pixel count. Larger, sharper rectified images give lower-variance estimates, exactly as one would expect for a Bernoulli proportion with sample size $N_i$.
 
@@ -278,7 +278,7 @@ $$\widehat{\text{WWR}}_{\text{building}} = \frac{\sum_i w_i \, \widehat{\text{WW
 with $s_i$ the view score from §5 and $A_i = \ell_i \cdot H$ the real-world facade area in m². The weight has two factors with distinct meanings:
 
 - **Physical weight $A_i$.** The facade contributes to the heat-loss integral over the envelope in proportion to how much surface it is. A 2 m chamfered wall corner should not receive the same weight as a 20 m main facade.
-- **Statistical weight $s_i$.** It is monotone in both $1 / \operatorname{Var}(\widehat{\text{WWR}}_i)$ (larger quads have more pixels and lower variance) and in homography conditioning (perpendicular incidence reduces rectification distortion). Up to constants this is the inverse-variance weighting that the Gauss-Markov theorem prescribes for a minimum-variance unbiased linear combination of independent estimators.
+- **Statistical weight $s_i$.** It is monotone in both $1 / \text{Var}(\widehat{\text{WWR}}_i)$ (larger quads have more pixels and lower variance) and in homography conditioning (perpendicular incidence reduces rectification distortion). Up to constants this is the inverse-variance weighting that the Gauss-Markov theorem prescribes for a minimum-variance unbiased linear combination of independent estimators.
 
 The product $w_i = s_i \cdot A_i$ thus combines a physical contribution weight with an approximate statistical weight. A small alley-side facade seen at a grazing angle vanishes; a large street-facing facade seen square-on dominates.
 
