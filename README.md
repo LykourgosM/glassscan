@@ -284,6 +284,10 @@ The product $w_i = s_i \cdot A_i$ thus combines a physical contribution weight w
 
 A failure mode: if every facade has $N_i = 0$ (catastrophic segmentation or rectification failure), the notebook raises `RuntimeError`. In production batch mode this should be replaced with `NaN` plus a logger warning so a single broken building does not abort a batch.
 
+## Implementation status
+
+The methodology described above is implemented in `notebooks/geometry_single_building.ipynb` and runs per-building as the designed upgrade. The 651-building dashboard at the top of this README was produced by an earlier baseline (`notebooks/run.ipynb` plus the `src/glassscan/` modules), which uses a simpler approximation at three points: nearest-pano fetch instead of breadth-first search discovery, a quadrilateral fit to the segmentation contour instead of homography from known 3D corners, and default per-view weights instead of the score × area scheme. Migrating the batch runner to the geometry-aware pipeline is the next step; the notebook is the reference implementation.
+
 ## Limitations and failure modes
 
 The pipeline has not been validated against on-site facade surveys; the building-level estimate is internally consistent (the per-facade Bernoulli variance shrinks with pixel count, the score-weighted mean is well-defined) but absolute accuracy at the per-building level is unproven without ground truth. Calibration against a curated sample is the obvious next step.
